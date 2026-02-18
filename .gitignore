@@ -1,0 +1,29 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+
+# Node.js
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large files/folders with scans - excluded from Git to avoid path length issues and keep repo clean
+2018/
+2019/
+2020г/
+2021/
+2022/
+2023/
+2024/
+2025/
+2026/
+backend/storage/
+Договора и акты на ТО лифтов ТЕХНИЧЕСКОЕ ОБСЛУЖИВАНИЕ/
+ПРОТИВОВЕС/
+ПРОТИВОВЕС Т/

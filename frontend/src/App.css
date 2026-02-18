@@ -1,0 +1,213 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #282c34; /* Фон для всего приложения */
+  color: white;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.App {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.App-header {
+  width: 100%;
+  max-width: 1200px; /* Ограничиваем ширину шапки */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-bottom: 20px;
+}
+
+.main-nav {
+  margin-bottom: 20px;
+}
+
+.nav-link {
+  color: #61dafb;
+  text-decoration: none;
+  font-size: 1.2em;
+  padding: 10px 15px;
+  border: 1px solid #61dafb;
+  border-radius: 5px;
+  transition: background-color 0.3s ease;
+  margin: 0 10px;
+}
+
+.nav-link:hover {
+  background-color: #61dafb;
+  color: #282c34;
+}
+
+.home-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+/* Стили для DropZone, FileList, UploadStatus, ResponseDetails - останутся в App.css */
+h1 {
+  color: #61dafb;
+  margin-bottom: 30px;
+}
+
+.drop-zone {
+  border: 2px dashed #61dafb;
+  border-radius: 10px;
+  padding: 50px;
+  margin: 20px 0;
+  cursor: pointer;
+  width: 80%;
+  max-width: 600px;
+  background-color: #3a3f4a;
+  transition: background-color 0.3s ease;
+}
+
+.drop-zone.drag-over {
+  background-color: #4a4f5a;
+}
+
+.drop-zone p {
+  margin: 0;
+  color: #ccc;
+}
+
+.file-list-container {
+  margin-top: 30px;
+  background-color: #3a3f4a;
+  padding: 20px;
+  border-radius: 10px;
+  width: 80%;
+  max-width: 600px;
+}
+
+.file-list-container h2 {
+  color: #61dafb;
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+.file-list {
+  list-style: none;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 15px;
+  text-align: left;
+}
+
+.file-list li {
+  background-color: #4a4f5a;
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #eee;
+}
+
+.remove-file-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.3s ease;
+}
+
+.remove-file-btn:hover {
+  background-color: #c82333;
+}
+
+.upload-button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  font-size: 1.1em;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.upload-button:hover {
+  background-color: #218838;
+}
+
+.upload-status {
+  margin-top: 20px;
+  font-size: 1.1em;
+  color: #ffc107;
+}
+
+.response-details {
+  margin-top: 30px;
+  background-color: #3a3f4a;
+  padding: 20px;
+  border-radius: 10px;
+  width: 80%;
+  max-width: 800px;
+  text-align: left;
+}
+
+.response-details h2 {
+  color: #61dafb;
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+.response-list {
+  list-style: none;
+  padding: 0;
+}
+
+.response-list li {
+  background-color: #4a4f5a;
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 10px;
+  color: #eee;
+}
+
+.status-failed {
+  background-color: #6a2a2a;
+}
+
+.status-success {
+  background-color: #2a6a2a;
+}
+
+.error-message {
+  color: #ff0000;
+  font-weight: bold;
+}
+
+.response-list pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background-color: #282c34;
+  padding: 10px;
+  border-radius: 5px;
+  margin-top: 10px;
+  font-size: 0.8em;
+  color: #a1e2ff;
+}

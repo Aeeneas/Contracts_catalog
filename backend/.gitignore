@@ -1,0 +1,9 @@
+venv/
+.env
+storage/
+__pycache__/
+*.pyc
+*.docx
+*.pdf
+test_*.py
+list_models.py

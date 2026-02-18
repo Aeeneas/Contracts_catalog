@@ -1,0 +1,70 @@
+.contract-details-container {
+    margin-top: 40px;
+    width: 90%;
+    max-width: 800px;
+    background-color: #3a3f4a;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    color: white;
+    text-align: left;
+}
+
+.contract-details-container h2 {
+    text-align: center;
+    color: #61dafb;
+    margin-bottom: 25px;
+}
+
+.details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+.detail-item {
+    background-color: #4a4f5a;
+    padding: 10px 15px;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+    color: #eee;
+}
+
+.detail-item strong {
+    color: #61dafb;
+    margin-bottom: 5px;
+}
+
+.detail-item span {
+    word-wrap: break-word; /* Для длинных путей */
+}
+
+.detail-item.full-width {
+    grid-column: 1 / -1; /* Занимает всю ширину */
+}
+
+.details-loading, .details-error, .details-not-found {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 1.2em;
+}
+
+.details-error {
+    color: #dc3545;
+}
+
+.back-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 15px;
+    margin-bottom: 20px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.back-button:hover {
+    background-color: #0056b3;
+}
