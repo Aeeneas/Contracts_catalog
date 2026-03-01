@@ -91,6 +91,28 @@ body {
   margin: 0;
 }
 
+.drop-buttons {
+  display: flex;
+  gap: 15px;
+  margin: 10px 0;
+}
+
+.drop-btn-action {
+  background-color: white;
+  border: 1.5px solid #007bff;
+  color: #007bff;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.drop-btn-action:hover {
+  background-color: #007bff;
+  color: white;
+}
+
 .drop-hint {
   color: #6c757d;
   font-size: 1.1rem;

@@ -122,6 +122,18 @@ function ContractDetails() {
             
             <div className="details-grid">
                 <div className="detail-item">
+                    <strong>Тип документа:</strong> 
+                    {isEditing ? (
+                        <select value={editData.doc_type} onChange={e => handleFieldChange('doc_type', e.target.value)}>
+                            <option value="ДОГ">Договор</option>
+                            <option value="ДС">Доп. соглашение</option>
+                            <option value="АКТ">Акт</option>
+                            <option value="КС-2">КС-2</option>
+                            <option value="КС-3">КС-3</option>
+                        </select>
+                    ) : <span>{contract.doc_type}</span>}
+                </div>
+                <div className="detail-item">
                     <strong>Компания:</strong> 
                     {isEditing ? (
                         <select value={editData.company} onChange={e => handleFieldChange('company', e.target.value)}>

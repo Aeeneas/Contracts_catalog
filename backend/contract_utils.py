@@ -1,52 +1,42 @@
 from datetime import date
 
-# Define mappings for abbreviations
-WORK_TYPE_ABBREVIATIONS = {
-    "ТО": "ТХ",
-    "МОНТАЖ": "МН",
-    "СТРОЙКА": "СТ",
-    "ПРОЕКТИРОВАНИЕ": "ПР",
-    "КАПИТАЛЬНЫЕ РАБОТЫ": "КР"
+# Маппинг типов документов для номера
+DOC_TYPE_MAP = {
+    "ДОГ": "ДОГ",
+    "ДС": "ДС",
+    "АКТ": "АКТ",
+    "КС-2": "КС2",
+    "КС-3": "КС3"
 }
 
-COMPANY_ABBREVIATIONS = {
-    "Противовес": "ПВ",
-    "Противовес-Т": "ПВТ",
-    "ТОР-ЛИФТ": "ТЛ"
+# Префиксы компаний согласно ТЗ
+COMPANY_PREFIXES = {
+    "ТОР-ЛИФТ": "ТЛ",
+    "ПРОТИВОВЕС": "ПВ",
+    "ПРОТИВОВЕС-Т": "ПВТ"
 }
 
-def generate_unique_contract_number(work_type: str, company: str, conclusion_date: date) -> str:
+def generate_unique_contract_number(doc_type: str, company: str, conclusion_date: date) -> str:
     """
-    Generates a unique contract number based on the specified format.
-    Format: [Аббревиатура_Типа_работ]-[Аббревиатура_Компании]-[Месяц_подписания][Год_подписания]
-    Example: МН-ПВ-0726 (Монтаж-Противовес-Июль 2026)
+    Генерирует уникальный номер согласно формату: [Тип док]-[Префикс]-[ММГГ]
+    Пример: ДОГ-ТЛ-0126
     """
     
-    # Get work type abbreviation
-    work_type_abbr = WORK_TYPE_ABBREVIATIONS.get(work_type.upper(), "??")
+    # Определяем код документа (по умолчанию ДОГ)
+    doc_code = DOC_TYPE_MAP.get(doc_type.upper(), "ДОГ")
     
-    # Get company abbreviation
-    company_abbr = COMPANY_ABBREVIATIONS.get(company.upper(), "??")
-    # Handle variations for "Противовес"
-    if "ПРОТИВОВЕС-Т" in company.upper():
-        company_abbr = "ПВТ"
-    elif "ПРОТИВОВЕС" in company.upper():
-        company_abbr = "ПВ"
-    elif "ТОР-ЛИФТ" in company.upper():
-        company_abbr = "ТЛ"
+    # Определяем префикс компании
+    comp_upper = company.upper()
+    if "ТОР-ЛИФТ" in comp_upper or "ТОР ЛИФТ" in comp_upper:
+        prefix = "ТЛ"
+    elif "ПРОТИВОВЕС-Т" in comp_upper:
+        prefix = "ПВТ"
+    elif "ПРОТИВОВЕС" in comp_upper:
+        prefix = "ПВ"
     else:
-        company_abbr = "??" # If not recognized
+        prefix = "??"
 
-    # Get month and year from conclusion date
-    month_str = conclusion_date.strftime("%m")
-    year_str = conclusion_date.strftime("%y") # Last two digits of the year
+    # Формируем ММГГ
+    date_part = conclusion_date.strftime("%m%y")
 
-    return f"{work_type_abbr}-{company_abbr}-{month_str}{year_str}"
-
-# Example usage
-if __name__ == "__main__":
-    test_date = date(2026, 7, 15)
-    print(generate_unique_contract_number("МОНТАЖ", "Противовес", test_date)) # Expected: МН-ПВ-0726
-    print(generate_unique_contract_number("КАПИТАЛЬНЫЕ РАБОТЫ", "ТОР-ЛИФТ", date(2025, 1, 1))) # Expected: КР-ТЛ-0125
-    print(generate_unique_contract_number("ТО", "Противовес-Т", date(2024, 12, 31))) # Expected: ТХ-ПВТ-1224
-    print(generate_unique_contract_number("СТРОЙКА", "Неизвестная Компания", date(2023, 5, 10))) # Expected: СТ-??-0523
+    return f"{doc_code}-{prefix}-{date_part}"

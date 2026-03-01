@@ -26,11 +26,46 @@ function ContractAnalysis() {
     event.currentTarget.classList.remove('drag-over');
   };
 
-  const handleDrop = (event) => {
+  const handleDrop = async (event) => {
     event.preventDefault();
     event.currentTarget.classList.remove('drag-over');
-    if (event.dataTransfer.files) {
-      setSelectedFiles([...selectedFiles, ...Array.from(event.dataTransfer.files)]);
+    
+    const items = event.dataTransfer.items;
+    if (!items) return;
+
+    const files = [];
+    
+    // Рекурсивная функция для обхода папок
+    const traverseFileTree = async (item, path = "") => {
+      if (item.isFile) {
+        const file = await new Promise((resolve) => item.file(resolve));
+        // Проверяем расширение
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (['pdf', 'docx', 'doc', 'xlsx', 'xls', 'zip'].includes(ext)) {
+          files.push(file);
+        }
+      } else if (item.isDirectory) {
+        const dirReader = item.createReader();
+        const entries = await new Promise((resolve) => {
+          dirReader.readEntries(resolve);
+        });
+        for (const entry of entries) {
+          await traverseFileTree(entry, path + item.name + "/");
+        }
+      }
+    };
+
+    const promises = [];
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry();
+      if (entry) {
+        promises.push(traverseFileTree(entry));
+      }
+    }
+
+    await Promise.all(promises);
+    if (files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...files]);
     }
   };
 
@@ -48,6 +83,18 @@ function ContractAnalysis() {
     return months > 0 ? Math.round((totalCost / months) * 100) / 100 : 0;
   };
 
+  const folderInputRef = useRef(null);
+
+  const handleFolderChange = (event) => {
+    if (event.target.files) {
+      const filteredFiles = Array.from(event.target.files).filter(file => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        return ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'zip'].includes(ext);
+      });
+      setSelectedFiles([...selectedFiles, ...filteredFiles]);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (selectedFiles.length === 0) {
       setUploadStatus('Пожалуйста, выберите файлы для загрузки.');
@@ -56,7 +103,7 @@ function ContractAnalysis() {
 
     setUploadStatus('Анализ файлов...');
     setIsAnalyzing(true);
-    const results = [];
+    let allResults = [];
 
     for (const file of selectedFiles) {
       const formData = new FormData();
@@ -69,38 +116,52 @@ function ContractAnalysis() {
         });
 
         const data = await response.json();
+        
         if (response.ok) {
-          const aiData = data.extracted_data;
-          const calculatedMonthly = aiData.work_type === 'ТО' 
-            ? calculateMonthlyCost(aiData.contract_cost, aiData.start_date, aiData.end_date, aiData.work_type)
-            : (aiData.monthly_cost || 0);
+          // Обработка либо одного файла, либо массива из ZIP
+          const itemsToProcess = data.status === 'batch_analyzed' ? data.results : [data];
 
-          results.push({
-            id: Math.random().toString(36).substr(2, 9),
-            temp_path: data.temp_path,
-            filename: data.filename,
-            data: {
-              company: aiData.company || '',
-              customer: aiData.customer || '',
-              work_type: aiData.work_type || '',
-              contract_cost: aiData.contract_cost || 0,
-              monthly_cost: calculatedMonthly,
-              conclusion_date: aiData.conclusion_date || '',
-              start_date: aiData.start_date || '',
-              end_date: aiData.end_date || '',
-              stages_info: aiData.stages_info || 'Один этап',
-              short_description: data.summary || ''
-            },
-            status: 'analyzed'
+          itemsToProcess.forEach(item => {
+            if (item.status === 'analyzed') {
+              const aiData = item.extracted_data;
+              const calculatedMonthly = aiData.work_type === 'ТО' 
+                ? calculateMonthlyCost(aiData.contract_cost, aiData.start_date, aiData.end_date, aiData.work_type)
+                : (aiData.monthly_cost || 0);
+
+              allResults.push({
+                id: Math.random().toString(36).substr(2, 9),
+                temp_path: item.temp_path,
+                filename: item.filename,
+                data: {
+                  doc_type: aiData.doc_type || 'ДОГ',
+                  company: aiData.company || '',
+                  customer: aiData.customer || '',
+                  work_type: aiData.work_type || '',
+                  contract_cost: aiData.contract_cost || 0,
+                  monthly_cost: calculatedMonthly,
+                  conclusion_date: aiData.conclusion_date || '',
+                  start_date: aiData.start_date || '',
+                  end_date: aiData.end_date || '',
+                  stages_info: aiData.stages_info || 'Один этап',
+                  short_description: item.summary || ''
+                },
+                errors: {},
+                status: 'analyzed'
+              });
+            } else {
+              console.error(`Файл ${item.filename} не был проанализирован:`, item.error);
+            }
           });
+        } else {
+          console.error(`Ошибка анализа файла ${file.name}:`, data.error);
         }
       } catch (error) {
         console.error('Ошибка сети при анализе:', error);
       }
     }
 
-    setAnalysisResults(results);
-    setUploadStatus(results.length > 0 ? 'Анализ завершен. Пожалуйста, подтвердите данные.' : 'Не удалось проанализировать файлы.');
+    setAnalysisResults(prev => [...prev, ...allResults]);
+    setUploadStatus(allResults.length > 0 ? 'Анализ завершен. Пожалуйста, подтвердите данные.' : 'Не удалось проанализировать файлы.');
     setIsAnalyzing(false);
     setSelectedFiles([]);
   };
@@ -195,9 +256,13 @@ function ContractAnalysis() {
             onClick={() => fileInputRef.current.click()}
           >
             <div className="drop-zone-content">
-              <span className="drop-icon">📄</span>
-              <p>Перетащите договоры сюда или нажмите для выбора</p>
-              <span className="drop-hint">Поддерживаются PDF, Word, Excel и ZIP</span>
+              <span className="drop-icon">📁</span>
+              <p>Перетащите <strong>файлы или папки</strong> сюда</p>
+              <div className="drop-buttons">
+                <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current.click(); }} className="drop-btn-action">Выбрать файлы</button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); folderInputRef.current.click(); }} className="drop-btn-action">Выбрать папку</button>
+              </div>
+              <span className="drop-hint">PDF, Word, Excel, ZIP. Папки сканируются рекурсивно.</span>
             </div>
             <input
               type="file"
@@ -206,6 +271,15 @@ function ContractAnalysis() {
               ref={fileInputRef}
               onChange={handleFileChange}
               accept=".pdf,.docx,.doc,.xlsx,.xls,.zip"
+            />
+            <input
+              type="file"
+              webkitdirectory="" 
+              directory=""
+              mozdirectory=""
+              hidden
+              ref={folderInputRef}
+              onChange={handleFolderChange}
             />
           </div>
         </div>
@@ -232,11 +306,21 @@ function ContractAnalysis() {
 
       <div className="analysis-results">
         {analysisResults.map((result) => (
-          <div key={result.id} className="analysis-card">
-            <h3>Файл: {result.filename}</h3>
-            <div className="form-grid">
-              <label className={result.errors?.company ? 'invalid-field' : ''}>Компания*:
-                <select value={result.data.company} onChange={e => handleFieldChange(result.id, 'company', e.target.value)}>
+                      <div key={result.id} className="analysis-card">
+                        <h3>Файл: {result.filename}</h3>
+                        <div className="form-grid">
+                          <label>Тип документа*:
+                            <select value={result.data.doc_type} onChange={e => handleFieldChange(result.id, 'doc_type', e.target.value)}>
+                              <option value="ДОГ">Договор</option>
+                              <option value="ДС">Доп. соглашение</option>
+                              <option value="АКТ">Акт</option>
+                              <option value="КС-2">КС-2</option>
+                              <option value="КС-3">КС-3</option>
+                            </select>
+                          </label>
+                          <label className={result.errors?.company ? 'invalid-field' : ''}>Компания*:
+                            <select value={result.data.company} onChange={e => handleFieldChange(result.id, 'company', e.target.value)}>
+          
                   <option value="">Выберите компанию</option>
                   <option value="ТОР-ЛИФТ">ТОР-ЛИФТ</option>
                   <option value="Противовес">Противовес</option>

@@ -55,6 +55,7 @@ def extract_contract_data(contract_text: str) -> Dict[str, Any]:
     5. Формат JSON.
 
     Поля JSON:
+    - doc_type: (ДОГ | ДС | АКТ | КС-2 | КС-3) - тип документа
     - company: (ТОР-ЛИФТ | Противовес | Противовес-Т | null)
     - customer: Полное наименование заказчика (строка | null)
     - work_type: (ТО | МОНТАЖ | СТРОЙКА | ПРОЕКТИРОВАНИЕ | КАПИТАЛЬНЫЕ РАБОТЫ | null)
