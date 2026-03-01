@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './App.css';
 
@@ -8,11 +8,30 @@ function ContractAnalysis() {
   const [analysisResults, setAnalysisResults] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (folderInputRef.current) {
+      folderInputRef.current.setAttribute("webkitdirectory", "");
+      folderInputRef.current.setAttribute("directory", "");
+      folderInputRef.current.setAttribute("mozdirectory", "");
+    }
+  }, []);
 
   const handleFileChange = (event) => {
     if (event.target.files) {
       setSelectedFiles([...selectedFiles, ...Array.from(event.target.files)]);
+    }
+  };
+
+  const handleFolderChange = (event) => {
+    if (event.target.files) {
+      const filteredFiles = Array.from(event.target.files).filter(file => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        return ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'zip'].includes(ext);
+      });
+      setSelectedFiles([...selectedFiles, ...filteredFiles]);
     }
   };
 
@@ -29,44 +48,27 @@ function ContractAnalysis() {
   const handleDrop = async (event) => {
     event.preventDefault();
     event.currentTarget.classList.remove('drag-over');
-    
     const items = event.dataTransfer.items;
     if (!items) return;
-
     const files = [];
-    
-    // Рекурсивная функция для обхода папок
     const traverseFileTree = async (item, path = "") => {
       if (item.isFile) {
         const file = await new Promise((resolve) => item.file(resolve));
-        // Проверяем расширение
         const ext = file.name.split('.').pop().toLowerCase();
-        if (['pdf', 'docx', 'doc', 'xlsx', 'xls', 'zip'].includes(ext)) {
-          files.push(file);
-        }
+        if (['pdf', 'docx', 'doc', 'xlsx', 'xls', 'zip'].includes(ext)) { files.push(file); }
       } else if (item.isDirectory) {
         const dirReader = item.createReader();
-        const entries = await new Promise((resolve) => {
-          dirReader.readEntries(resolve);
-        });
-        for (const entry of entries) {
-          await traverseFileTree(entry, path + item.name + "/");
-        }
+        const entries = await new Promise((resolve) => { dirReader.readEntries(resolve); });
+        for (const entry of entries) { await traverseFileTree(entry, path + item.name + "/"); }
       }
     };
-
     const promises = [];
     for (let i = 0; i < items.length; i++) {
       const entry = items[i].webkitGetAsEntry();
-      if (entry) {
-        promises.push(traverseFileTree(entry));
-      }
+      if (entry) { promises.push(traverseFileTree(entry)); }
     }
-
     await Promise.all(promises);
-    if (files.length > 0) {
-      setSelectedFiles(prev => [...prev, ...files]);
-    }
+    if (files.length > 0) { setSelectedFiles(prev => [...prev, ...files]); }
   };
 
   const handleRemoveFile = (indexToRemove) => {
@@ -81,18 +83,6 @@ function ContractAnalysis() {
     let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
     if (end.getDate() >= start.getDate() - 1) { months += 1; }
     return months > 0 ? Math.round((totalCost / months) * 100) / 100 : 0;
-  };
-
-  const folderInputRef = useRef(null);
-
-  const handleFolderChange = (event) => {
-    if (event.target.files) {
-      const filteredFiles = Array.from(event.target.files).filter(file => {
-        const ext = file.name.split('.').pop().toLowerCase();
-        return ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'zip'].includes(ext);
-      });
-      setSelectedFiles([...selectedFiles, ...filteredFiles]);
-    }
   };
 
   const handleAnalyze = async () => {
@@ -117,51 +107,62 @@ function ContractAnalysis() {
 
         const data = await response.json();
         
-        if (response.ok) {
-          // Обработка либо одного файла, либо массива из ZIP
-          const itemsToProcess = data.status === 'batch_analyzed' ? data.results : [data];
+        // Обработка либо одного файла, либо массива из ZIP
+        const itemsToProcess = data.status === 'batch_analyzed' ? data.results : [data];
 
-          itemsToProcess.forEach(item => {
-            if (item.status === 'analyzed') {
-              const aiData = item.extracted_data;
-              const calculatedMonthly = aiData.work_type === 'ТО' 
-                ? calculateMonthlyCost(aiData.contract_cost, aiData.start_date, aiData.end_date, aiData.work_type)
-                : (aiData.monthly_cost || 0);
+        itemsToProcess.forEach(item => {
+          if (item.status === 'analyzed') {
+            const aiData = item.extracted_data;
+            const calculatedMonthly = aiData.work_type === 'ТО' 
+              ? calculateMonthlyCost(aiData.contract_cost, aiData.start_date, aiData.end_date, aiData.work_type)
+              : (aiData.monthly_cost || 0);
 
-              allResults.push({
-                id: Math.random().toString(36).substr(2, 9),
-                temp_path: item.temp_path,
-                filename: item.filename,
-                data: {
-                  doc_type: aiData.doc_type || 'ДОГ',
-                  company: aiData.company || '',
-                  customer: aiData.customer || '',
-                  work_type: aiData.work_type || '',
-                  contract_cost: aiData.contract_cost || 0,
-                  monthly_cost: calculatedMonthly,
-                  conclusion_date: aiData.conclusion_date || '',
-                  start_date: aiData.start_date || '',
-                  end_date: aiData.end_date || '',
-                  stages_info: aiData.stages_info || 'Один этап',
-                  short_description: item.summary || ''
-                },
-                errors: {},
-                status: 'analyzed'
-              });
-            } else {
-              console.error(`Файл ${item.filename} не был проанализирован:`, item.error);
-            }
-          });
-        } else {
-          console.error(`Ошибка анализа файла ${file.name}:`, data.error);
-        }
+            allResults.push({
+              id: Math.random().toString(36).substr(2, 9),
+              temp_path: item.temp_path,
+              filename: item.filename,
+              file_hash: item.file_hash,
+              data: {
+                doc_type: aiData.doc_type || 'ДОГ',
+                company: aiData.company || '',
+                customer: aiData.customer || '',
+                work_type: aiData.work_type || '',
+                contract_cost: aiData.contract_cost || 0,
+                monthly_cost: calculatedMonthly,
+                conclusion_date: aiData.conclusion_date || '',
+                start_date: aiData.start_date || '',
+                end_date: aiData.end_date || '',
+                stages_info: aiData.stages_info || 'Один этап',
+                short_description: item.summary || ''
+              },
+              errors: {},
+              status: 'analyzed'
+            });
+          } else if (item.status === 'duplicate_hash') {
+            allResults.push({
+              id: Math.random().toString(36).substr(2, 9),
+              filename: item.filename,
+              error: item.error,
+              status: 'error',
+              errorType: 'duplicate'
+            });
+          } else {
+            allResults.push({
+              id: Math.random().toString(36).substr(2, 9),
+              filename: item.filename,
+              error: item.error || item.details || 'Ошибка анализа',
+              status: 'error',
+              errorType: 'generic'
+            });
+          }
+        });
       } catch (error) {
-        console.error('Ошибка сети при анализе:', error);
+        console.error('Ошибка сети:', error);
       }
     }
 
     setAnalysisResults(prev => [...prev, ...allResults]);
-    setUploadStatus(allResults.length > 0 ? 'Анализ завершен. Пожалуйста, подтвердите данные.' : 'Не удалось проанализировать файлы.');
+    setUploadStatus(allResults.length > 0 ? 'Анализ завершен. Проверьте результаты.' : 'Не удалось проанализировать файлы.');
     setIsAnalyzing(false);
     setSelectedFiles([]);
   };
@@ -180,20 +181,26 @@ function ContractAnalysis() {
     }));
   };
 
+  const [activeError, setActiveError] = useState(null);
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    alert('Текст ошибки скопирован');
+  };
+
   const handleFinalize = async (resultId) => {
+    setActiveError(null);
     const resultToFinalize = analysisResults.find(r => r.id === resultId);
     if (!resultToFinalize) return;
 
     const mandatoryFields = ['company', 'customer', 'work_type'];
     const newErrors = {};
     let hasErrors = false;
-    mandatoryFields.forEach(field => {
-      if (!resultToFinalize.data[field]) { newErrors[field] = true; hasErrors = true; }
-    });
+    mandatoryFields.forEach(field => { if (!resultToFinalize.data[field]) { newErrors[field] = true; hasErrors = true; } });
 
     if (hasErrors) {
       setAnalysisResults(prev => prev.map(res => res.id === resultId ? { ...res, errors: newErrors } : res));
-      setUploadStatus('Пожалуйста, заполните обязательные поля.');
+      setUploadStatus('Заполните обязательные поля.');
       return;
     }
 
@@ -210,6 +217,7 @@ function ContractAnalysis() {
         body: JSON.stringify({
           temp_path: resultToFinalize.temp_path,
           filename: resultToFinalize.filename,
+          file_hash: resultToFinalize.file_hash,
           ...sanitizedData
         }),
       });
@@ -217,25 +225,21 @@ function ContractAnalysis() {
       const data = await response.json();
       if (response.ok) {
         setAnalysisResults(prev => prev.filter(r => r.id !== resultId));
-        setUploadStatus(`Договор ${data.unique_number} успешно сохранен!`);
+        setUploadStatus(`Договор ${data.unique_number} сохранен!`);
       } else {
-        alert(`Ошибка при сохранении: ${data.detail || data.message || data.error}`);
+        const errorMsg = data.detail ? JSON.stringify(data.detail) : (data.message || data.error || 'Ошибка');
+        setActiveError({ id: resultId, msg: errorMsg });
       }
     } catch (error) {
-      alert('Ошибка сети при сохранении.');
+      setActiveError({ id: resultId, msg: `Ошибка сети: ${error.message}` });
     }
   };
 
   const handleCancel = async (resultId) => {
-    const resultToCancel = analysisResults.find(r => r.id === resultId);
-    if (!resultToCancel) return;
-    try {
-      await fetch('http://localhost:8000/cancel-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ temp_path: resultToCancel.temp_path }),
-      });
-    } catch (error) {}
+    const res = analysisResults.find(r => r.id === resultId);
+    if (res && res.temp_path) {
+      try { await fetch('http://localhost:8000/cancel-upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ temp_path: res.temp_path }) }); } catch (e) {}
+    }
     setAnalysisResults(prev => prev.filter(r => r.id !== resultId));
   };
 
@@ -248,39 +252,18 @@ function ContractAnalysis() {
       
       {!analysisResults.length && !selectedFiles.length && (
         <div className="centered-drop-container">
-          <div 
-            className="drop-zone"
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current.click()}
-          >
+          <div className="drop-zone" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} onClick={() => fileInputRef.current.click()}>
             <div className="drop-zone-content">
               <span className="drop-icon">📁</span>
               <p>Перетащите <strong>файлы или папки</strong> сюда</p>
               <div className="drop-buttons">
                 <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current.click(); }} className="drop-btn-action">Выбрать файлы</button>
-                <button type="button" onClick={(e) => { e.stopPropagation(); folderInputRef.current.click(); }} className="drop-btn-action">Выбрать папку</button>
+                {/* <button type="button" onClick={(e) => { e.stopPropagation(); folderInputRef.current.click(); }} className="drop-btn-action">Выбрать папку</button> */}
               </div>
-              <span className="drop-hint">PDF, Word, Excel, ZIP. Папки сканируются рекурсивно.</span>
+              <span className="drop-hint">PDF, Word, Excel, ZIP. Рекурсивное сканирование.</span>
             </div>
-            <input
-              type="file"
-              multiple
-              hidden
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept=".pdf,.docx,.doc,.xlsx,.xls,.zip"
-            />
-            <input
-              type="file"
-              webkitdirectory="" 
-              directory=""
-              mozdirectory=""
-              hidden
-              ref={folderInputRef}
-              onChange={handleFolderChange}
-            />
+            <input type="file" multiple hidden ref={fileInputRef} onChange={handleFileChange} accept=".pdf,.docx,.doc,.xlsx,.xls,.zip" />
+            <input type="file" hidden ref={folderInputRef} onChange={handleFolderChange} />
           </div>
         </div>
       )}
@@ -290,15 +273,10 @@ function ContractAnalysis() {
           <h2>Выбранные файлы:</h2>
           <ul className="file-list">
             {selectedFiles.map((file, index) => (
-              <li key={index}>
-                {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                <button onClick={() => handleRemoveFile(index)} className="remove-file-btn">X</button>
-              </li>
+              <li key={index}>{file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB) <button onClick={() => handleRemoveFile(index)} className="remove-file-btn">X</button></li>
             ))}
           </ul>
-          <button onClick={handleAnalyze} className="upload-button" disabled={isAnalyzing}>
-            {isAnalyzing ? 'Анализирую...' : 'Анализировать файлы'}
-          </button>
+          <button onClick={handleAnalyze} className="upload-button" disabled={isAnalyzing}>{isAnalyzing ? 'Анализирую...' : 'Анализировать файлы'}</button>
         </div>
       )}
 
@@ -306,63 +284,55 @@ function ContractAnalysis() {
 
       <div className="analysis-results">
         {analysisResults.map((result) => (
-                      <div key={result.id} className="analysis-card">
-                        <h3>Файл: {result.filename}</h3>
-                        <div className="form-grid">
-                          <label>Тип документа*:
-                            <select value={result.data.doc_type} onChange={e => handleFieldChange(result.id, 'doc_type', e.target.value)}>
-                              <option value="ДОГ">Договор</option>
-                              <option value="ДС">Доп. соглашение</option>
-                              <option value="АКТ">Акт</option>
-                              <option value="КС-2">КС-2</option>
-                              <option value="КС-3">КС-3</option>
-                            </select>
-                          </label>
-                          <label className={result.errors?.company ? 'invalid-field' : ''}>Компания*:
-                            <select value={result.data.company} onChange={e => handleFieldChange(result.id, 'company', e.target.value)}>
-          
-                  <option value="">Выберите компанию</option>
-                  <option value="ТОР-ЛИФТ">ТОР-ЛИФТ</option>
-                  <option value="Противовес">Противовес</option>
-                  <option value="Противовес-Т">Противовес-Т</option>
-                </select>
-              </label>
-              <label className={result.errors?.customer ? 'invalid-field' : ''}>Заказчик*:
-                <input type="text" value={result.data.customer} onChange={e => handleFieldChange(result.id, 'customer', e.target.value)} />
-              </label>
-              <label className={result.errors?.work_type ? 'invalid-field' : ''}>Тип работ*:
-                <select value={result.data.work_type} onChange={e => handleFieldChange(result.id, 'work_type', e.target.value)}>
-                  <option value="">Выберите тип</option>
-                  <option value="ТО">ТО</option>
-                  <option value="МОНТАЖ">МОНТАЖ</option>
-                  <option value="СТРОЙКА">СТРОЙКА</option>
-                  <option value="ПРОЕКТИРОВАНИЕ">ПРОЕКТИРОВАНИЕ</option>
-                  <option value="КАПИТАЛЬНЫЕ РАБОТЫ">КАПИТАЛЬНЫЕ РАБОТЫ</option>
-                </select>
-              </label>
-              <label>Стоимость (общая):
-                <input type="number" value={result.data.contract_cost} onChange={e => handleFieldChange(result.id, 'contract_cost', parseFloat(e.target.value))} />
-              </label>
-              <label>Стоимость (месяц):
-                <input type="number" value={result.data.monthly_cost} onChange={e => handleFieldChange(result.id, 'monthly_cost', parseFloat(e.target.value))} />
-              </label>
-              <label>Дата заключения:
-                <input type="date" value={result.data.conclusion_date} onChange={e => handleFieldChange(result.id, 'conclusion_date', e.target.value)} />
-              </label>
-              <label>Дата начала:
-                <input type="date" value={result.data.start_date} onChange={e => handleFieldChange(result.id, 'start_date', e.target.value)} />
-              </label>
-              <label>Дата окончания:
-                <input type="date" value={result.data.end_date} onChange={e => handleFieldChange(result.id, 'end_date', e.target.value)} />
-              </label>
-              <label className="full-width">Описание:
-                <textarea value={result.data.short_description} onChange={e => handleFieldChange(result.id, 'short_description', e.target.value)} />
-              </label>
-            </div>
-            <div className="card-actions">
-              <button onClick={() => handleFinalize(result.id)} className="confirm-btn">Подтвердить и Сохранить</button>
-              <button onClick={() => handleCancel(result.id)} className="cancel-btn">Отменить</button>
-            </div>
+          <div key={result.id} className={`analysis-card ${result.status === 'error' ? 'card-error' : ''}`}>
+            <h3>Файл: {result.filename}</h3>
+            
+            {result.status === 'error' ? (
+              <div className="error-card-content">
+                <p className="error-msg-main">{result.errorType === 'duplicate' ? '🚫 Дубликат обнаружен' : '⚠️ Ошибка анализа'}</p>
+                <p className="error-msg-detail">{result.error}</p>
+                <button onClick={() => handleCancel(result.id)} className="cancel-btn">Закрыть</button>
+              </div>
+            ) : (
+              <>
+                <div className="form-grid">
+                  <label>Тип документа*:
+                    <select value={result.data.doc_type} onChange={e => handleFieldChange(result.id, 'doc_type', e.target.value)}>
+                      <option value="ДОГ">Договор</option><option value="ДС">Доп. соглашение</option><option value="АКТ">Акт</option><option value="КС-2">КС-2</option><option value="КС-3">КС-3</option>
+                    </select>
+                  </label>
+                  <label className={result.errors?.company ? 'invalid-field' : ''}>Компания*:
+                    <select value={result.data.company} onChange={e => handleFieldChange(result.id, 'company', e.target.value)}>
+                      <option value="">Выберите компанию</option><option value="ТОР-ЛИФТ">ТОР-ЛИФТ</option><option value="Противовес">Противовес</option><option value="Противовес-Т">Противовес-Т</option>
+                    </select>
+                  </label>
+                  <label className={result.errors?.customer ? 'invalid-field' : ''}>Заказчик*:
+                    <input type="text" value={result.data.customer} onChange={e => handleFieldChange(result.id, 'customer', e.target.value)} />
+                  </label>
+                  <label className={result.errors?.work_type ? 'invalid-field' : ''}>Тип работ*:
+                    <select value={result.data.work_type} onChange={e => handleFieldChange(result.id, 'work_type', e.target.value)}>
+                      <option value="">Выберите тип</option><option value="ТО">ТО</option><option value="МОНТАЖ">МОНТАЖ</option><option value="СТРОЙКА">СТРОЙКА</option><option value="ПРОЕКТИРОВАНИЕ">ПРОЕКТИРОВАНИЕ</option><option value="КАПИТАЛЬНЫЕ РАБОТЫ">КАПИТАЛЬНЫЕ РАБОТЫ</option>
+                    </select>
+                  </label>
+                  <label>Стоимость (общая):<input type="number" value={result.data.contract_cost} onChange={e => handleFieldChange(result.id, 'contract_cost', parseFloat(e.target.value))} /></label>
+                  <label>Стоимость (месяц):<input type="number" value={result.data.monthly_cost} onChange={e => handleFieldChange(result.id, 'monthly_cost', parseFloat(e.target.value))} /></label>
+                  <label>Дата заключения:<input type="date" value={result.data.conclusion_date} onChange={e => handleFieldChange(result.id, 'conclusion_date', e.target.value)} /></label>
+                  <label>Дата начала:<input type="date" value={result.data.start_date} onChange={e => handleFieldChange(result.id, 'start_date', e.target.value)} /></label>
+                  <label>Дата окончания:<input type="date" value={result.data.end_date} onChange={e => handleFieldChange(result.id, 'end_date', e.target.value)} /></label>
+                  <label className="full-width">Описание:<textarea value={result.data.short_description} onChange={e => handleFieldChange(result.id, 'short_description', e.target.value)} /></label>
+                </div>
+                {activeError && activeError.id === result.id && (
+                  <div className="error-block-inline">
+                    <div className="error-content"><strong>Ошибка сохранения:</strong><pre>{activeError.msg}</pre></div>
+                    <button onClick={() => copyToClipboard(activeError.msg)} className="copy-error-btn">📋 Копировать текст ошибки</button>
+                  </div>
+                )}
+                <div className="card-actions">
+                  <button onClick={() => handleFinalize(result.id)} className="confirm-btn">Подтвердить и Сохранить</button>
+                  <button onClick={() => handleCancel(result.id)} className="cancel-btn">Отменить</button>
+                </div>
+              </>
+            )}
           </div>
         ))}
       </div>

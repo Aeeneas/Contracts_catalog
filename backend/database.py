@@ -15,6 +15,7 @@ class Contract(Base):
     id = Column(Integer, primary_key=True, index=True)
     unique_contract_number = Column(String(50), unique=True, nullable=False)
     doc_type = Column(String(20), nullable=False, default='ДОГ')
+    file_hash = Column(String(64), nullable=True, index=True) # Хеш SHA-256
     company = Column(String(100), nullable=False)
     customer = Column(String(255), nullable=False)
     work_type = Column(String(50), nullable=False)

@@ -2,6 +2,7 @@ import os
 import shutil
 import zipfile
 import aiofiles
+import hashlib
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Form
 from fastapi.responses import JSONResponse
 from typing import List, Optional
@@ -25,6 +26,14 @@ import re
 from starlette.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 import subprocess
+
+def calculate_file_hash(file_path: str) -> str:
+    """Вычисляет SHA-256 хеш файла."""
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
 
 def sanitize_filename(name: str) -> str:
     """Удаляет символы, запрещенные в именах файлов и папок Windows."""
@@ -77,14 +86,29 @@ class ContractBase(BaseModel):
     catalog_path: str
     ai_analysis_status: str = "В ожидании"
 
-class ContractCreate(ContractBase):
-    pass
+class ContractCreate(BaseModel):
+    unique_contract_number: str
+    doc_type: str
+    file_hash: Optional[str] = None
+    company: str
+    customer: str
+    work_type: str
+    contract_cost: float
+    monthly_cost: Optional[float] = None
+    stages_info: str
+    short_description: str
+    conclusion_date: date
+    start_date: date
+    end_date: date
+    catalog_path: str
+    ai_analysis_status: str
 
 class ContractResponse(BaseModel):
     id: int
     upload_date: datetime
     unique_contract_number: str
     doc_type: str
+    file_hash: Optional[str] = None
     company: str
     customer: str
     work_type: str
@@ -104,6 +128,7 @@ class ContractResponse(BaseModel):
 class FinalizeContract(BaseModel):
     temp_path: str
     filename: str
+    file_hash: str
     doc_type: Optional[str] = "ДОГ"
     company: Optional[str] = None
     customer: Optional[str] = None
@@ -131,6 +156,17 @@ class ContractUpdate(BaseModel):
 
 async def process_single_file(file_path: str, filename: str, db: Session):
     try:
+        # Проверка дубликата по хешу
+        file_hash = calculate_file_hash(file_path)
+        existing_contract = db.query(Contract).filter(Contract.file_hash == file_hash).first()
+        
+        if existing_contract:
+            return {
+                "filename": filename,
+                "status": "duplicate_hash",
+                "error": f"Этот файл уже загружен ранее (Номер: {existing_contract.unique_contract_number})"
+            }
+
         extracted_text = extract_text(file_path)
         if "Error: " in extracted_text:
             return {"filename": filename, "status": "failed text extraction", "error": extracted_text}
@@ -144,6 +180,7 @@ async def process_single_file(file_path: str, filename: str, db: Session):
         return {
             "temp_path": file_path,
             "filename": filename,
+            "file_hash": file_hash,
             "extracted_data": ai_extracted_data,
             "summary": ai_summary or "Не удалось сгенерировать описание.",
             "status": "analyzed"
@@ -179,7 +216,7 @@ async def analyze_document(file: UploadFile = File(...), db: Session = Depends(g
             return JSONResponse(status_code=500, content={"error": f"Ошибка архива: {str(e)}"})
     else:
         res = await process_single_file(file_path_in_tmp, file.filename, db)
-        return JSONResponse(status_code=400, content=res) if res.get("status") == "failed" else res
+        return JSONResponse(status_code=400, content=res) if res.get("status") in ["failed", "duplicate_hash"] else res
 
 @app.post("/finalize")
 async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db)):
@@ -200,14 +237,11 @@ async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db))
         )
 
         is_duplicate = db.query(Contract).filter(
-            Contract.unique_contract_number == unique_num,
-            Contract.company == data.company,
-            Contract.customer == data.customer,
-            Contract.conclusion_date == conclusion_date
+            (Contract.unique_contract_number == unique_num) | (Contract.file_hash == data.file_hash)
         ).first()
 
         if is_duplicate:
-            return JSONResponse(status_code=409, content={"error": "duplicate", "message": f"Документ {unique_num} уже существует."})
+            return JSONResponse(status_code=409, content={"error": "duplicate", "message": f"Документ {unique_num} или такой же файл уже существует."})
 
         final_dir_path = os.path.join(FINAL_STORAGE_ROOT, sanitize_filename(data.company), sanitize_filename(data.customer), sanitize_filename(data.work_type), str(conclusion_date.year))
         os.makedirs(final_dir_path, exist_ok=True)
@@ -217,6 +251,7 @@ async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db))
         contract_db_data = {
             "unique_contract_number": unique_num,
             "doc_type": data.doc_type or "ДОГ",
+            "file_hash": data.file_hash,
             "company": data.company,
             "customer": data.customer,
             "work_type": data.work_type,
