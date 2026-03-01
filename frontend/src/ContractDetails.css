@@ -1,150 +1,160 @@
 .contract-details-container {
-    margin-top: 40px;
+    margin-top: 10px;
     width: 98%;
-    max-width: none;
-    background-color: white;
-    padding: 30px;
-    border-radius: 10px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     color: #212529;
-    text-align: left;
-}
-
-.contract-details-container h2 {
-    text-align: center;
-    color: #343a40;
-    margin-bottom: 30px;
-    border-bottom: 2px solid #f8f9fa;
-    padding-bottom: 15px;
 }
 
 .details-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-}
-
-.header-buttons {
-    display: flex;
-    gap: 10px;
-}
-
-.edit-btn, .save-btn, .cancel-btn-small {
-    padding: 8px 15px;
-    border-radius: 5px;
-    border: none;
-    cursor: pointer;
-    font-weight: bold;
-    transition: all 0.2s ease;
-}
-
-.edit-btn {
-    background-color: #ffc107;
-    color: #212529;
-}
-
-.delete-btn {
-    background-color: #dc3545;
-    color: white;
-    padding: 8px 15px;
-    border-radius: 5px;
-    border: none;
-    cursor: pointer;
-    font-weight: bold;
-    transition: all 0.2s ease;
-}
-
-.delete-btn:hover {
-    background-color: #c82333;
-    transform: translateY(-1px);
-}
-
-.save-btn {
-    background-color: #28a745;
-    color: white;
-}
-
-.cancel-btn-small {
-    background-color: #6c757d;
-    color: white;
-}
-
-.edit-btn:hover, .save-btn:hover, .cancel-btn-small:hover {
-    transform: translateY(-1px);
-    opacity: 0.9;
-}
-
-.detail-item input, .detail-item select, .detail-item textarea {
-    padding: 8px;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    margin-top: 5px;
-    font-size: 1rem;
-    background-color: white;
-}
-
-.pre-wrap {
-    white-space: pre-wrap;
-}
-
-.details-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
-}
-
-.detail-item {
-    background-color: #f8f9fa;
-    padding: 15px 20px;
+    margin-bottom: 15px;
+    background: white;
+    padding: 10px 20px;
     border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+/* Акцентный блок сверху */
+.highlights-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    background: #007bff;
+    color: white;
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 25px;
+    box-shadow: 0 10px 20px rgba(0,123,255,0.15);
+}
+
+.highlight-item {
     display: flex;
     flex-direction: column;
-    color: #495057;
-    border: 1px solid #e9ecef;
+    gap: 5px;
 }
 
-.detail-item strong {
-    color: #007bff;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
+.highlight-item label {
+    font-size: 0.75rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
+    opacity: 0.8;
 }
 
-.detail-item span {
-    word-wrap: break-word;
+.highlight-item strong {
+    font-size: 1.4rem;
+}
+
+.highlight-item .price-tag {
+    font-size: 1.8rem;
+    font-weight: 800;
+}
+
+.contract-number-title {
+    font-size: 1.5rem;
+    color: #343a40;
+    margin: 0 0 20px 5px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.content-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+}
+
+.details-section {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    border: 1px solid #eef0f2;
+}
+
+.section-title {
+    margin-top: 0;
+    margin-bottom: 20px;
     font-size: 1.1rem;
+    color: #495057;
+    border-bottom: 2px solid #f8f9fa;
+    padding-bottom: 10px;
+    font-weight: 700;
 }
 
-.detail-item.full-width {
-    grid-column: 1 / -1;
+.details-grid-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
-.details-loading, .details-error, .details-not-found {
-    text-align: center;
-    margin-top: 40px;
-    font-size: 1.2em;
+.detail-item-inline {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid #f8f9fa;
+    padding-bottom: 5px;
+}
+
+.detail-item-inline strong {
+    font-size: 0.85rem;
     color: #6c757d;
+    min-width: 150px;
 }
 
-.details-error {
-    color: #dc3545;
+.detail-item-inline span {
+    font-weight: 500;
+    text-align: right;
 }
 
-.back-button {
-    background-color: #6c757d;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    padding: 10px 20px;
-    margin-bottom: 25px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-weight: bold;
+.detail-item-block {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 8px;
 }
 
-.back-button:hover {
-    background-color: #5a6268;
-    transform: translateX(-5px);
+.detail-item-block strong {
+    font-size: 0.8rem;
+    color: #6c757d;
+    text-transform: uppercase;
+}
+
+.summary-text {
+    margin: 5px 0 0 0;
+    line-height: 1.5;
+    color: #4a5568;
+    white-space: pre-wrap;
+    font-size: 0.95rem;
+    text-align: left; /* Гарантированное выравнивание */
+}
+
+.pre-wrap-small {
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: 0.85rem;
+    background: white;
+    padding: 10px;
+    border: 1px solid #edf2f7;
+    border-radius: 4px;
+    margin: 0;
+}
+
+.system-info {
+    margin-top: 30px;
+    font-size: 0.75rem;
+    color: #adb5bd;
+}
+
+.edit-btn { background-color: #ffc107; color: #212529; font-weight: bold; }
+.delete-btn { background-color: #fff5f5; color: #c53030; border: 1px solid #feb2b2; }
+.save-btn { background-color: #28a745; color: white; font-weight: bold; }
+.cancel-btn-small { background-color: #f8f9fa; color: #6c757d; border: 1px solid #dee2e6; }
+
+.header-buttons { display: flex; gap: 10px; }
+
+@media (max-width: 1000px) {
+    .content-layout { grid-template-columns: 1fr; }
 }

@@ -8,7 +8,14 @@ function ContractList() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState({ key: 'upload_date', direction: 'desc' }); // По умолчанию новые сверху
+    const [sortConfig, setSortConfig] = useState({ key: 'upload_date', direction: 'desc' });
+    
+    // Состояние для активных типов работ
+    const [activeWorkTypes, setActiveWorkTypes] = useState([]); 
+    const [activeCompanies, setActiveCompanies] = useState([]); // Новое состояние для компаний
+
+    const workTypes = ["ТО", "МОНТАЖ", "СТРОЙКА", "ПРОЕКТИРОВАНИЕ", "КАПИТАЛЬНЫЕ РАБОТЫ"];
+    const companies = ["ТОР-ЛИФТ", "Противовес", "Противовес-Т"];
 
     useEffect(() => {
         const fetchContracts = async () => {
@@ -29,6 +36,18 @@ function ContractList() {
         fetchContracts();
     }, []);
 
+    const toggleWorkType = (type) => {
+        setActiveWorkTypes(prev => 
+            prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+        );
+    };
+
+    const toggleCompany = (company) => {
+        setActiveCompanies(prev => 
+            prev.includes(company) ? prev.filter(c => c !== company) : [...prev, company]
+        );
+    };
+
     const handleSort = (key) => {
         let direction = 'asc';
         if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -43,26 +62,38 @@ function ContractList() {
             sortableContracts.sort((a, b) => {
                 const aValue = a[sortConfig.key];
                 const bValue = b[sortConfig.key];
-
-                if (aValue < bValue) {
-                    return sortConfig.direction === 'asc' ? -1 : 1;
-                }
-                if (aValue > bValue) {
-                    return sortConfig.direction === 'asc' ? 1 : -1;
-                }
+                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
             });
         }
         return sortableContracts;
     }, [contracts, sortConfig]);
 
-    const filteredContracts = sortedContracts.filter(contract =>
-        contract.unique_contract_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contract.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contract.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contract.work_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contract.short_description.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredContracts = sortedContracts.filter(contract => {
+        const matchesSearch = 
+            contract.unique_contract_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            contract.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            contract.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            contract.work_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            contract.short_description.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        const matchesType = activeWorkTypes.length === 0 || activeWorkTypes.includes(contract.work_type);
+        const matchesCompany = activeCompanies.length === 0 || activeCompanies.includes(contract.company);
+
+        return matchesSearch && matchesType && matchesCompany;
+    });
+
+    const getRowClass = (workType) => {
+        const map = {
+            "ТО": "row-to",
+            "МОНТАЖ": "row-montage",
+            "СТРОЙКА": "row-build",
+            "ПРОЕКТИРОВАНИЕ": "row-project",
+            "КАПИТАЛЬНЫЕ РАБОТЫ": "row-cap"
+        };
+        return map[workType] || "";
+    };
 
     const handleRowClick = (contractId) => {
         navigate(`/contract/${contractId}`);
@@ -94,14 +125,50 @@ function ContractList() {
 
     return (
         <div className="contract-list-container">
-            <h2>Список Договоров</h2>
-            <input
-                type="text"
-                placeholder="Поиск по договорам..."
-                className="search-input"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            <div className="filter-section">
+                <div className="search-wrapper">
+                    <input
+                        type="text"
+                        placeholder="Поиск по договорам..."
+                        className="search-input"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                
+                <div className="filter-group">
+                    <div className="work-type-filters">
+                        <span className="filter-label">Вид работ:</span>
+                        {workTypes.map(type => (
+                            <button 
+                                key={type} 
+                                className={`filter-chip chip-${getRowClass(type)} ${activeWorkTypes.includes(type) ? 'active' : ''}`}
+                                onClick={() => toggleWorkType(type)}
+                            >
+                                {type}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="company-filters">
+                        <span className="filter-label">Наша компания:</span>
+                        {companies.map(comp => (
+                            <button 
+                                key={comp} 
+                                className={`filter-chip chip-company ${activeCompanies.includes(comp) ? 'active' : ''}`}
+                                onClick={() => toggleCompany(comp)}
+                            >
+                                {comp}
+                            </button>
+                        ))}
+                    </div>
+
+                    {(activeWorkTypes.length > 0 || activeCompanies.length > 0) && (
+                        <button className="filter-clear-btn" onClick={() => {setActiveWorkTypes([]); setActiveCompanies([]);}}>Сбросить все ×</button>
+                    )}
+                </div>
+            </div>
+
             <div className="table-scroll-wrapper">
                 <table className="contracts-table">
                     <thead>
@@ -124,20 +191,20 @@ function ContractList() {
                             <th onClick={() => handleSort('conclusion_date')} className={`sortable ${sortConfig.key === 'conclusion_date' ? 'active' : ''}`}>
                                 Дата заключения <span className="sort-icon">{getSortIcon('conclusion_date')}</span>
                             </th>
-                            <th>Краткое описание</th>
+                            <th>Сводка</th>
                             <th>Действия</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredContracts.map(contract => (
-                            <tr key={contract.id} onClick={() => handleRowClick(contract.id)} className="contract-row">
+                            <tr key={contract.id} onClick={() => handleRowClick(contract.id)} className={`contract-row ${getRowClass(contract.work_type)}`}>
                                 <td>{contract.unique_contract_number}</td>
                                 <td>{contract.company}</td>
                                 <td>{contract.customer}</td>
                                 <td>{contract.work_type}</td>
-                                <td>{contract.contract_cost}</td>
+                                <td>{contract.contract_cost.toLocaleString()}</td>
                                 <td>{new Date(contract.conclusion_date).toLocaleDateString()}</td>
-                                <td>{contract.short_description.substring(0, 100)}...</td>
+                                <td className="ultra-summary-cell">{contract.ultra_short_summary || 'Нет описания'}</td>
                                 <td>
                                     <button 
                                         className="row-open-folder-btn"

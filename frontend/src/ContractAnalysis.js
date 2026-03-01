@@ -122,20 +122,30 @@ function ContractAnalysis() {
               temp_path: item.temp_path,
               filename: item.filename,
               file_hash: item.file_hash,
-              data: {
-                doc_type: aiData.doc_type || 'ДОГ',
-                company: aiData.company || '',
-                customer: aiData.customer || '',
-                work_type: aiData.work_type || '',
-                contract_cost: aiData.contract_cost || 0,
-                monthly_cost: calculatedMonthly,
-                conclusion_date: aiData.conclusion_date || '',
-                start_date: aiData.start_date || '',
-                end_date: aiData.end_date || '',
-                stages_info: aiData.stages_info || 'Один этап',
-                short_description: item.summary || ''
-              },
-              errors: {},
+                              data: {
+                                doc_type: aiData.doc_type || 'ДОГ',
+                                company: aiData.company || '',
+                                customer: aiData.customer || '',
+                                                  customer_inn: aiData.customer_inn || '',
+                                                  customer_ogrn: aiData.customer_ogrn || '',
+                                                  customer_ceo: aiData.customer_ceo || '',
+                                                  customer_legal_address: aiData.customer_legal_address || '',
+                                                  customer_contacts: aiData.customer_contacts || '',
+                                                  customer_bank_details: aiData.customer_bank_details || '',
+                                
+                                work_type: aiData.work_type || '',
+                                work_address: aiData.work_address || '',
+                                elevator_addresses: aiData.elevator_addresses || '',
+                                contract_cost: aiData.contract_cost || 0,
+                                monthly_cost: calculatedMonthly,
+                                conclusion_date: aiData.conclusion_date || '',
+                                start_date: aiData.start_date || '',
+                                end_date: aiData.end_date || '',
+                                                  stages_info: aiData.stages_info || 'Один этап',
+                                                  short_description: item.summary || '',
+                                                  ultra_short_summary: aiData.ultra_short_summary || ''
+                                                },
+                                              errors: {},
               status: 'analyzed'
             });
           } else if (item.status === 'duplicate_hash') {
@@ -246,7 +256,9 @@ function ContractAnalysis() {
   return (
     <div className="analysis-page-container">
       <div className="analysis-header">
-        <button onClick={() => navigate('/')} className="back-btn-minimal">← Вернуться к списку</button>
+        <button onClick={() => navigate('/')} className="back-btn-styled">
+          ← Вернуться к списку договоров
+        </button>
         <h2>Анализ новых договоров</h2>
       </div>
       
@@ -309,17 +321,45 @@ function ContractAnalysis() {
                   <label className={result.errors?.customer ? 'invalid-field' : ''}>Заказчик*:
                     <input type="text" value={result.data.customer} onChange={e => handleFieldChange(result.id, 'customer', e.target.value)} />
                   </label>
+                  <label>ИНН:
+                    <input type="text" value={result.data.customer_inn} onChange={e => handleFieldChange(result.id, 'customer_inn', e.target.value)} />
+                  </label>
+                  <label>ОГРН:
+                    <input type="text" value={result.data.customer_ogrn} onChange={e => handleFieldChange(result.id, 'customer_ogrn', e.target.value)} />
+                  </label>
+                  <label>Руководитель (Ген. директор):
+                    <input type="text" value={result.data.customer_ceo} onChange={e => handleFieldChange(result.id, 'customer_ceo', e.target.value)} />
+                  </label>
+                  <label className="full-width">Юр. адрес:
+                    <input type="text" value={result.data.customer_legal_address} onChange={e => handleFieldChange(result.id, 'customer_legal_address', e.target.value)} />
+                  </label>
+                  <label className="full-width">Контактные данные (Тел, Email):
+                    <input type="text" value={result.data.customer_contacts} onChange={e => handleFieldChange(result.id, 'customer_contacts', e.target.value)} />
+                  </label>
+                  <label className="full-width">Банковские реквизиты:
+                    <textarea value={result.data.customer_bank_details} onChange={e => handleFieldChange(result.id, 'customer_bank_details', e.target.value)} style={{height: '60px'}} />
+                  </label>
                   <label className={result.errors?.work_type ? 'invalid-field' : ''}>Тип работ*:
                     <select value={result.data.work_type} onChange={e => handleFieldChange(result.id, 'work_type', e.target.value)}>
                       <option value="">Выберите тип</option><option value="ТО">ТО</option><option value="МОНТАЖ">МОНТАЖ</option><option value="СТРОЙКА">СТРОЙКА</option><option value="ПРОЕКТИРОВАНИЕ">ПРОЕКТИРОВАНИЕ</option><option value="КАПИТАЛЬНЫЕ РАБОТЫ">КАПИТАЛЬНЫЕ РАБОТЫ</option>
                     </select>
+                  </label>
+                  <label className="full-width">Адрес выполнения работ (Объект):
+                    <input type="text" value={result.data.work_address} onChange={e => handleFieldChange(result.id, 'work_address', e.target.value)} />
+                  </label>
+                  <label className="full-width">Адреса лифтов:
+                    <input type="text" value={result.data.elevator_addresses} onChange={e => handleFieldChange(result.id, 'elevator_addresses', e.target.value)} />
                   </label>
                   <label>Стоимость (общая):<input type="number" value={result.data.contract_cost} onChange={e => handleFieldChange(result.id, 'contract_cost', parseFloat(e.target.value))} /></label>
                   <label>Стоимость (месяц):<input type="number" value={result.data.monthly_cost} onChange={e => handleFieldChange(result.id, 'monthly_cost', parseFloat(e.target.value))} /></label>
                   <label>Дата заключения:<input type="date" value={result.data.conclusion_date} onChange={e => handleFieldChange(result.id, 'conclusion_date', e.target.value)} /></label>
                   <label>Дата начала:<input type="date" value={result.data.start_date} onChange={e => handleFieldChange(result.id, 'start_date', e.target.value)} /></label>
                   <label>Дата окончания:<input type="date" value={result.data.end_date} onChange={e => handleFieldChange(result.id, 'end_date', e.target.value)} /></label>
-                  <label className="full-width">Описание:<textarea value={result.data.short_description} onChange={e => handleFieldChange(result.id, 'short_description', e.target.value)} /></label>
+                                    <label className="full-width">Сверхкраткое описание (для таблицы):
+                                      <input type="text" value={result.data.ultra_short_summary} onChange={e => handleFieldChange(result.id, 'ultra_short_summary', e.target.value)} placeholder='Напр: ТО 50 лифтов, Комсомольский проспект' />
+                                    </label>
+                                    <label className="full-width">Описание:
+                  <textarea value={result.data.short_description} onChange={e => handleFieldChange(result.id, 'short_description', e.target.value)} /></label>
                 </div>
                 {activeError && activeError.id === result.id && (
                   <div className="error-block-inline">

@@ -1,19 +1,128 @@
 .contract-list-container {
-    margin-top: 40px;
+    margin-top: 10px;
     width: 98%;
     max-width: none;
     background-color: white;
-    padding: 20px;
+    padding: 15px;
     border-radius: 10px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
     color: #212529;
     text-align: left;
 }
 
-.contract-list-container h2 {
-    text-align: center;
-    color: #343a40;
-    margin-bottom: 25px;
+.filter-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 15px;
+    background-color: #f8f9fa;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.search-wrapper {
+    width: 100%;
+}
+
+.work-type-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.work-type-filters, .company-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Цвета для кнопок-фильтров по умолчанию (приглушенные) */
+.filter-chip.chip-row-to { background-color: #f0f7ff; color: #0d47a1; border-color: #bbdefb; }
+.filter-chip.chip-row-montage { background-color: #f4faf0; color: #33691e; border-color: #dcedc8; }
+.filter-chip.chip-row-build { background-color: #fff7ee; color: #e65100; border-color: #ffe0b2; }
+.filter-chip.chip-row-project { background-color: #f9f3ff; color: #4a148c; border-color: #e1bee7; }
+.filter-chip.chip-row-cap { background-color: #f5f3f2; color: #3e2723; border-color: #d7ccc8; }
+
+/* Цвета для активных кнопок-фильтров (яркие) */
+.filter-chip.chip-row-to.active { background-color: #90caf9; color: #0d47a1; border-color: #64b5f6; font-weight: bold; }
+.filter-chip.chip-row-montage.active { background-color: #c5e1a5; color: #33691e; border-color: #aed581; font-weight: bold; }
+.filter-chip.chip-row-build.active { background-color: #ffcc80; color: #e65100; border-color: #ffb74d; font-weight: bold; }
+.filter-chip.chip-row-project.active { background-color: #ce93d8; color: #4a148c; border-color: #ba68c8; font-weight: bold; }
+.filter-chip.chip-row-cap.active { background-color: #bcaaa4; color: #3e2723; border-color: #a1887f; font-weight: bold; }
+
+.filter-chip.chip-company { background-color: #f0fdfe; color: #006064; border-color: #b2ebf2; }
+.filter-chip.chip-company.active { background-color: #80deea; color: #006064; border-color: #4dd0e1; font-weight: bold; }
+
+.filter-chip:hover {
+    filter: brightness(0.95);
+    transform: translateY(-1px);
+}
+
+/* Раскраска строк таблицы (более заметная) */
+.contracts-table tbody tr.row-to { background-color: #f0f7ff; }
+.contracts-table tbody tr.row-montage { background-color: #f4faf0; }
+.contracts-table tbody tr.row-build { background-color: #fff7ee; }
+.contracts-table tbody tr.row-project { background-color: #f9f3ff; }
+.contracts-table tbody tr.row-cap { background-color: #f5f3f2; }
+
+.contracts-table tbody tr.row-to:hover { background-color: #bbdefb; }
+.contracts-table tbody tr.row-montage:hover { background-color: #dcedc8; }
+.contracts-table tbody tr.row-build:hover { background-color: #ffe0b2; }
+.contracts-table tbody tr.row-project:hover { background-color: #e1bee7; }
+.contracts-table tbody tr.row-cap:hover { background-color: #d7ccc8; }
+
+.filter-label {
+    font-weight: bold;
+    color: #495057;
+    margin-right: 5px;
+    font-size: 0.95rem;
+}
+
+.filter-chip {
+    background-color: white;
+    border: 1.5px solid #ced4da;
+    color: #495057;
+    padding: 6px 15px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.filter-chip:hover {
+    border-color: #007bff;
+    color: #007bff;
+}
+
+.filter-chip.active {
+    background-color: #007bff;
+    border-color: #007bff;
+    color: white;
+    box-shadow: 0 2px 5px rgba(0,123,255,0.3);
+}
+
+.filter-clear-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 5px 10px;
+}
+
+.filter-clear-btn:hover {
+    text-decoration: underline;
 }
 
 .search-input {
@@ -92,17 +201,20 @@
     transition: background-color 0.2s;
 }
 
-.contracts-table tbody tr:nth-child(even) {
-    background-color: #fcfcfc;
-}
-
 .contracts-table tbody tr:hover {
-    background-color: #f1f3f5;
+    filter: brightness(0.98);
     cursor: pointer;
 }
 
 .contracts-table td {
     color: #495057;
+}
+
+.ultra-summary-cell {
+    font-size: 0.8rem;
+    color: #6c757d;
+    font-style: normal;
+    max-width: 350px;
 }
 
 .row-open-folder-btn {

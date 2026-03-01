@@ -6,9 +6,8 @@ from config import settings
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 
 def _call_deepseek(prompt: str, json_mode: bool = False) -> Optional[str]:
-    """Внутренняя функция для вызова DeepSeek API."""
     if not settings.DEEPSEEK_API_KEY:
-        print("Error: DEEPSEEK_API_KEY is not configured.")
+        print("Error: DEEPSEEK_API_KEY not configured.")
         return None
 
     headers = {
@@ -41,9 +40,6 @@ def _call_deepseek(prompt: str, json_mode: bool = False) -> Optional[str]:
         return None
 
 def extract_contract_data(contract_text: str) -> Dict[str, Any]:
-    """
-    Извлекает структурированные данные из договора с помощью DeepSeek.
-    """
     prompt = f"""
     ### ИНСТРУКЦИЯ:
     Извлеки данные из следующего текста договора. 
@@ -55,46 +51,70 @@ def extract_contract_data(contract_text: str) -> Dict[str, Any]:
     5. Формат JSON.
 
     Поля JSON:
-    - doc_type: (ДОГ | ДС | АКТ | КС-2 | КС-3) - тип документа
+    - doc_type: (ДОГ | ДС | АКТ | КС-2 | КС-3)
     - company: (ТОР-ЛИФТ | Противовес | Противовес-Т | null)
     - customer: Полное наименование заказчика (строка | null)
+    - customer_inn: ИНН заказчика (строка из 10 или 12 цифр | null)
+    - customer_ogrn: ОГРН или ОГРНИП заказчика (строка | null)
+    - customer_ceo: ФИО руководителя / Ген. директора (строка | null)
+    - customer_legal_address: Юридический адрес заказчика (строка | null)
+    - customer_contacts: Контактные данные (телефон, email) (строка | null)
+    - customer_bank_details: Банковские реквизиты (р/с, БИК, банк) (строка | null)
     - work_type: (ТО | МОНТАЖ | СТРОЙКА | ПРОЕКТИРОВАНИЕ | КАПИТАЛЬНЫЕ РАБОТЫ | null)
+    - work_address: Адрес выполнения работ / Объект (строка | null)
+    - elevator_addresses: Адреса установки лифтов (если несколько, через запятую) (строка | null)
     - contract_cost: Общая стоимость договора (число | null)
     - conclusion_date: Дата заключения договора (YYYY-MM-DD | null)
     - monthly_cost: Ежемесячная стоимость ТО (число | null)
     - start_date: Дата начала работ (YYYY-MM-DD | null)
     - end_date: Дата окончания работ (YYYY-MM-DD | null)
     - stages_info: Информация об этапах работ (строка | null)
+    - ultra_short_summary: Сверхкраткое описание ОДНИМ предложением (Суть + Адрес объекта). Пример: "ТО 50 лифтов, Комсомольский проспект" (строка | null)
     
     Текст договора:
     ---
     {contract_text}
     ---
     """
-    
     response_text = _call_deepseek(prompt, json_mode=True)
     if response_text:
         try:
             return json.loads(response_text)
         except Exception as e:
-            print(f"Error parsing JSON: {e}")
             return {"error": "Failed to parse AI response."}
     return {"error": "No response from AI."}
 
 def summarize_contract(contract_text: str) -> Optional[str]:
-    """Создает человекочитаемое резюме договора."""
     prompt = f"""
-    Напиши краткое, но информативное резюме договора в виде связного текста с использованием маркированного списка. 
-    Используй следующий план:
-    1. Стороны договора (Заказчик и Исполнитель).
-    2. Предмет договора (что именно нужно сделать).
-    3. Цена и условия оплаты.
-    4. Сроки выполнения работ.
-    5. Особые условия или приложения (если есть).
-
-    Текст должен быть на русском языке, профессиональным и легко читаемым. НЕ ИСПОЛЬЗУЙ JSON.
+    Напиши краткое резюме договора на РУССКОМ ЯЗЫКЕ. 
     
+    КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО:
+    1. Использовать формат JSON или любой другой программный код.
+    2. Использовать символы разметки: *, #, _, [, ].
+    3. Выравнивать текст по центру.
+
+    ТРЕБОВАНИЯ:
+    1. Только простой текст, выровненный ПО ЛЕВОМУ КРАЮ.
+    2. Используй только переносы строк для разделения логических блоков.
+    3. Соблюдай план: Стороны, Предмет, Финансовые условия, Сроки, Прочее.
+
     Текст договора:
     {contract_text}
     """
     return _call_deepseek(prompt, json_mode=False)
+
+def generate_ultra_short_summary(work_type: str, address: str, full_summary: str) -> str:
+    prompt = f"""
+    На основе данных договора сформируй ОДНУ очень короткую фразу для таблицы.
+    Фраза должна содержать: Вид работ + Краткую суть (кол-во лифтов, если есть) + Адрес (улица).
+    Пример: "ТО 50 лифтов, Комсомольский проспект" или "Монтаж 2 лифтов, ул. Ленина".
+    
+    ДАННЫЕ:
+    Вид работ: {work_type}
+    Адрес: {address}
+    Описание: {full_summary}
+    
+    Результат (только фраза, без кавычек и лишних слов):
+    """
+    res = _call_deepseek(prompt, json_mode=False)
+    return res.strip() if res else f"{work_type} по адресу {address}"
