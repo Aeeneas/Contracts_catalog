@@ -2,6 +2,10 @@ import os
 import fitz # PyMuPDF
 from docx import Document
 
+import pandas as pd
+import win32com.client as win32
+import pythoncom
+
 def extract_text_from_pdf(pdf_path: str) -> str:
     """Extracts text from a PDF file."""
     text = ""
@@ -12,7 +16,6 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         doc.close()
     except Exception as e:
         print(f"Error extracting text from PDF {pdf_path}: {e}")
-        # In a real scenario, you might want to log this error and/or return a specific error message
         return f"Error: Could not extract text from PDF ({e})"
     return text
 
@@ -22,16 +25,65 @@ def extract_text_from_docx(docx_path: str) -> str:
     try:
         doc = Document(docx_path)
         for para in doc.paragraphs:
-            text += para.text + "\n" # Corrected line: added missing closing quote and newline
+            text += para.text + "\n"
     except Exception as e:
         print(f"Error extracting text from DOCX {docx_path}: {e}")
         return f"Error: Could not extract text from DOCX ({e})"
     return text
 
+def extract_text_from_doc(doc_path: str) -> str:
+    """Extracts text from a legacy .doc file using win32com (requires MS Word)."""
+    text = ""
+    word = None
+    try:
+        # Initialize COM library for the current thread
+        pythoncom.CoInitialize()
+        word = win32.Dispatch("Word.Application")
+        word.Visible = False
+        # Use absolute path for Word COM
+        abs_path = os.path.abspath(doc_path)
+        doc = word.Documents.Open(abs_path)
+        text = doc.Content.Text
+        doc.Close()
+    except Exception as e:
+        print(f"Error extracting text from DOC {doc_path}: {e}")
+        return f"Error: Could not extract text from DOC ({e})"
+    finally:
+        if word:
+            word.Quit()
+        pythoncom.CoUninitialize()
+    return text
+
+def extract_text_from_xlsx(xlsx_path: str) -> str:
+    """Extracts text from an XLSX file (all sheets)."""
+    text = ""
+    try:
+        excel_data = pd.read_excel(xlsx_path, sheet_name=None, engine='openpyxl')
+        for sheet_name, df in excel_data.items():
+            text += f"Sheet: {sheet_name}\n"
+            text += df.to_string(index=False) + "\n\n"
+    except Exception as e:
+        print(f"Error extracting text from XLSX {xlsx_path}: {e}")
+        return f"Error: Could not extract text from XLSX ({e})"
+    return text
+
+def extract_text_from_xls(xls_path: str) -> str:
+    """Extracts text from a legacy .xls file (all sheets)."""
+    text = ""
+    try:
+        excel_data = pd.read_excel(xls_path, sheet_name=None, engine='xlrd')
+        for sheet_name, df in excel_data.items():
+            text += f"Sheet: {sheet_name}\n"
+            text += df.to_string(index=False) + "\n\n"
+    except Exception as e:
+        print(f"Error extracting text from XLS {xls_path}: {e}")
+        return f"Error: Could not extract text from XLS ({e})"
+    return text
+
 def extract_text(file_path: str) -> str:
     """
     Extracts text from a given file based on its extension.
-    Supports PDF and DOCX.
+    Supports PDF, DOCX, DOC, XLSX, XLS.
     """
     if not os.path.exists(file_path):
         return "Error: File not found."
@@ -42,6 +94,12 @@ def extract_text(file_path: str) -> str:
         return extract_text_from_pdf(file_path)
     elif file_extension == ".docx":
         return extract_text_from_docx(file_path)
+    elif file_extension == ".doc":
+        return extract_text_from_doc(file_path)
+    elif file_extension == ".xlsx":
+        return extract_text_from_xlsx(file_path)
+    elif file_extension == ".xls":
+        return extract_text_from_xls(file_path)
     else:
         return "Error: Unsupported file type for text extraction."
 

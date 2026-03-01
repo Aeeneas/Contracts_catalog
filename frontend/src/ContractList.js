@@ -40,6 +40,22 @@ function ContractList() {
         navigate(`/contract/${contractId}`); // Переход на страницу деталей
     };
 
+    const handleOpenFolder = async (e, contractId) => {
+        e.stopPropagation(); // Чтобы не срабатывал клик по строке (переход к деталям)
+        try {
+            const response = await fetch(`http://localhost:8000/contracts/${contractId}/open-folder`, {
+                method: 'POST'
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                alert(`Ошибка: ${errorData.message || 'Не удалось открыть папку'}`);
+            }
+        } catch (err) {
+            console.error('Ошибка при открытии папки договора:', err);
+            alert('Ошибка сети при попытке открыть папку.');
+        }
+    };
+
     if (loading) return <p>Загрузка договоров...</p>;
     if (error) return <p>Ошибка при загрузке договоров: {error}</p>;
 
@@ -64,12 +80,12 @@ function ContractList() {
                             <th>Стоимость</th>
                             <th>Дата заключения</th>
                             <th>Краткое описание</th>
-                            {/* Дополнительные поля по необходимости */}
+                            <th>Действия</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredContracts.map(contract => (
-                            <tr key={contract.id} onClick={() => handleRowClick(contract.id)} className="contract-row"> {/* Добавлен onClick и класс */}
+                            <tr key={contract.id} onClick={() => handleRowClick(contract.id)} className="contract-row">
                                 <td>{contract.unique_contract_number}</td>
                                 <td>{contract.company}</td>
                                 <td>{contract.customer}</td>
@@ -77,7 +93,15 @@ function ContractList() {
                                 <td>{contract.contract_cost}</td>
                                 <td>{new Date(contract.conclusion_date).toLocaleDateString()}</td>
                                 <td>{contract.short_description.substring(0, 100)}...</td>
-                                {/* Дополнительные поля */}
+                                <td>
+                                    <button 
+                                        className="row-open-folder-btn"
+                                        onClick={(e) => handleOpenFolder(e, contract.id)}
+                                        title="Открыть папку с договором"
+                                    >
+                                        📂
+                                    </button>
+                                </td>
                             </tr>
                         ))}
                     </tbody>

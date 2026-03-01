@@ -36,7 +36,19 @@ os.makedirs(TMP_UPLOAD_DIR, exist_ok=True)
 os.makedirs(ARCHIVE_DIR, exist_ok=True)
 os.makedirs(FINAL_STORAGE_ROOT, exist_ok=True) # Создаем финальную папку
 
+from fastapi.exceptions import RequestValidationError
+
+import subprocess
+
 app = FastAPI()
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    print(f"DEBUG Validation Error: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": exc.body},
+    )
 
 # Добавляем middleware для обработки CORS
 origins = [
@@ -94,6 +106,199 @@ class ContractResponse(BaseModel):
 @app.get("/")
 async def read_root():
     return {"message": "Welcome to the Contract Catalogizer API"}
+
+@app.post("/analyze")
+async def analyze_document(file: UploadFile = File(...)):
+    """
+    Только анализирует документ, извлекает текст и данные ИИ.
+    Не сохраняет в базу данных и не перемещает в финальное хранилище.
+    """
+    file_path_in_tmp = os.path.join(TMP_UPLOAD_DIR, file.filename)
+    
+    try:
+        # Сохраняем файл во временную директорию
+        async with aiofiles.open(file_path_in_tmp, "wb") as out_file:
+            while content := await file.read(1024):
+                await out_file.write(content)
+        
+        extracted_text = extract_text(file_path_in_tmp)
+        if "Error: " in extracted_text:
+            return JSONResponse(status_code=400, content={"error": "failed text extraction", "details": extracted_text})
+
+        ai_extracted_data = extract_contract_data(extracted_text)
+        ai_summary = summarize_contract(extracted_text)
+
+        if "error" in ai_extracted_data:
+            return JSONResponse(status_code=400, content={"error": "failed AI extraction", "details": ai_extracted_data["error"]})
+
+        # Дополняем данными для фронтенда
+        result = {
+            "temp_path": file_path_in_tmp,
+            "filename": file.filename,
+            "extracted_data": ai_extracted_data,
+            "summary": ai_summary or "Не удалось сгенерировать описание."
+        }
+        
+        return result
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+class FinalizeContract(BaseModel):
+    temp_path: str
+    filename: str
+    company: Optional[str] = None
+    customer: Optional[str] = None
+    work_type: Optional[str] = None
+    contract_cost: Optional[float] = 0.0
+    monthly_cost: Optional[float] = None
+    conclusion_date: Optional[date] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    stages_info: Optional[str] = "Один этап"
+    short_description: Optional[str] = ""
+
+@app.post("/finalize")
+async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db)):
+    """
+    Принимает подтвержденные пользователем данные, генерирует номер,
+    перемещает файл и сохраняет в БД.
+    """
+    print(f"DEBUG: Received finalize data: {data.model_dump()}")
+    
+    if not os.path.exists(data.temp_path):
+        raise HTTPException(status_code=404, detail=f"Временный файл не найден: {data.temp_path}")
+
+    try:
+        # Установка дат по умолчанию, если они не заполнены
+        conclusion_date = data.conclusion_date or date.today()
+        start_date = data.start_date or conclusion_date
+        end_date = data.end_date or (start_date + timedelta(days=365))
+
+        # 1. Проверка критических полей
+        if not all([data.company, data.customer, data.work_type]):
+             return JSONResponse(status_code=400, content={"error": "missing_fields", "message": "Компания, Заказчик и Тип работ обязательны для заполнения."})
+
+        # 2. Генерация уникального номера договора
+        unique_num = generate_unique_contract_number(
+            work_type=data.work_type,
+            company=data.company,
+            conclusion_date=conclusion_date
+        )
+
+        # 3. Проверка на дубликаты
+        is_duplicate = db.query(Contract).filter(
+            Contract.unique_contract_number == unique_num,
+            Contract.company == data.company,
+            Contract.customer == data.customer,
+            Contract.conclusion_date == conclusion_date
+        ).first()
+
+        if is_duplicate:
+            return JSONResponse(status_code=409, content={
+                "error": "duplicate detected",
+                "message": f"Договор с номером {unique_num} уже существует (ID: {is_duplicate.id})."
+            })
+
+        # 4. Формирование файловой структуры
+        final_dir_path = os.path.join(
+            FINAL_STORAGE_ROOT,
+            sanitize_filename(data.company),
+            sanitize_filename(data.customer),
+            sanitize_filename(data.work_type),
+            str(conclusion_date.year)
+        )
+        os.makedirs(final_dir_path, exist_ok=True)
+        
+        final_file_name = f"{unique_num}_{data.filename}"
+        final_file_path = os.path.join(final_dir_path, final_file_name)
+        
+        # Перемещаем файл из TMP в финальное место
+        shutil.move(data.temp_path, final_file_path)
+
+        # 5. Сохранение в БД
+        contract_db_data = {
+            "unique_contract_number": unique_num,
+            "company": data.company,
+            "customer": data.customer,
+            "work_type": data.work_type,
+            "contract_cost": data.contract_cost,
+            "monthly_cost": data.monthly_cost,
+            "conclusion_date": conclusion_date,
+            "start_date": start_date,
+            "end_date": end_date,
+            "stages_info": data.stages_info,
+            "short_description": data.short_description,
+            "catalog_path": final_file_path,
+            "ai_analysis_status": "Completed"
+        }
+
+        db_contract = Contract(**contract_db_data)
+        db.add(db_contract)
+        db.commit()
+        db.refresh(db_contract)
+
+        return {"status": "success", "contract_id": db_contract.id, "unique_number": unique_num}
+
+    except Exception as e:
+        # В случае ошибки стараемся не удалять файл, чтобы пользователь мог попробовать еще раз
+        # (или логика очистки по таймеру)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/contracts/{contract_id}/open-folder")
+async def open_contract_folder(contract_id: int, db: Session = Depends(get_db)):
+    """
+    Открывает папку, в которой хранится файл конкретного договора.
+    """
+    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Договор не найден")
+    
+    if not contract.catalog_path:
+        raise HTTPException(status_code=400, detail="Путь к файлу не указан")
+
+    try:
+        # Получаем путь к директории из полного пути к файлу
+        folder_path = os.path.dirname(os.path.abspath(contract.catalog_path))
+        
+        if os.path.exists(folder_path):
+            subprocess.Popen(['explorer', folder_path])
+            return {"status": "success", "message": f"Папка открыта: {folder_path}"}
+        else:
+            return JSONResponse(status_code=404, content={"error": "folder_not_found", "message": "Папка договора не найдена на диске."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/open-folder")
+async def open_storage_folder():
+    """
+    Открывает папку с финальными договорами в проводнике Windows поверх остальных окон.
+    """
+    try:
+        abs_path = os.path.abspath(FINAL_STORAGE_ROOT)
+        if os.path.exists(abs_path):
+            # Использование subprocess для запуска проводника напрямую
+            # Это часто помогает окну оказаться в фокусе (на переднем плане)
+            subprocess.Popen(['explorer', abs_path])
+            return {"status": "success", "message": f"Папка открыта: {abs_path}"}
+        else:
+            return JSONResponse(status_code=404, content={"error": "folder_not_found", "message": "Папка хранилища еще не создана."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/cancel-upload")
+async def cancel_upload(data: dict):
+    """
+    Удаляет временный файл, если пользователь отменил сохранение.
+    """
+    temp_path = data.get("temp_path")
+    if temp_path and os.path.exists(temp_path):
+        try:
+            os.remove(temp_path)
+            return {"status": "success", "message": "Временный файл удален"}
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"error": str(e)})
+    return {"status": "skipped", "message": "Файл не найден или путь не указан"}
 
 @app.post("/upload")
 async def upload_documents(files: List[UploadFile] = File(...), db: Session = Depends(get_db)):

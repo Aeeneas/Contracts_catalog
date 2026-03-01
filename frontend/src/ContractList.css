@@ -1,93 +1,102 @@
 .contract-list-container {
     margin-top: 40px;
-    width: 90%;
-    max-width: 1000px;
-    background-color: #3a3f4a;
+    width: 98%;
+    max-width: none;
+    background-color: white;
     padding: 20px;
     border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    color: white;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+    color: #212529;
     text-align: left;
 }
 
 .contract-list-container h2 {
     text-align: center;
-    color: #61dafb;
+    color: #343a40;
     margin-bottom: 25px;
 }
 
 .search-input {
     width: calc(100% - 20px);
-    padding: 10px;
+    padding: 12px;
     margin-bottom: 20px;
-    border: 1px solid #61dafb;
+    border: 1px solid #ced4da;
     border-radius: 5px;
-    background-color: #282c34;
-    color: white;
+    background-color: white;
+    color: #212529;
     font-size: 1em;
 }
 
+.search-input:focus {
+    outline: none;
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
 .search-input::placeholder {
-    color: #bbb;
+    color: #adb5bd;
 }
 
 .table-scroll-wrapper {
-    max-height: 500px; /* Ограничиваем высоту для прокрутки */
+    max-height: 750px;
     overflow-y: auto;
-    border: 1px solid #4a4f5a;
+    border: 1px solid #dee2e6;
     border-radius: 5px;
 }
 
 .contracts-table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 10px;
 }
 
 .contracts-table th, .contracts-table td {
-    border: 1px solid #4a4f5a;
-    padding: 12px 15px;
+    border: 1px solid #dee2e6;
+    padding: 8px 12px;
     text-align: left;
-    vertical-align: top;
+    vertical-align: middle;
+    font-size: 0.9rem;
 }
 
 .contracts-table th {
-    background-color: #282c34;
-    color: #61dafb;
+    background-color: #f8f9fa;
+    color: #495057;
     font-weight: bold;
     position: sticky;
-    top: 0; /* Делает заголовки липкими при прокрутке */
+    top: 0;
     z-index: 1;
 }
 
 .contracts-table tbody tr {
-    background-color: #3a3f4a;
+    background-color: white;
+    transition: background-color 0.2s;
 }
 
 .contracts-table tbody tr:nth-child(even) {
-    background-color: #31353e;
+    background-color: #fcfcfc;
 }
 
 .contracts-table tbody tr:hover {
-    background-color: #4a4f5a;
+    background-color: #f1f3f5;
     cursor: pointer;
 }
 
 .contracts-table td {
-    color: #eee;
+    color: #495057;
 }
 
-/* Стили для ссылок на детали (пока заглушка) */
-.contract-details-link {
-    color: #61dafb;
-    text-decoration: none;
-}
-
-.contract-details-link:hover {
-    text-decoration: underline;
-}
-
-/* Класс для кликабельной строки */
-.contract-row {
+.row-open-folder-btn {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
     cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.row-open-folder-btn:hover {
+    background-color: #e9ecef;
 }
