@@ -1,4 +1,6 @@
 from datetime import date
+from sqlalchemy.orm import Session
+import re
 
 # Маппинг типов документов для номера
 DOC_TYPE_MAP = {
@@ -9,24 +11,18 @@ DOC_TYPE_MAP = {
     "КС-3": "КС3"
 }
 
-# Префиксы компаний согласно ТЗ
-COMPANY_PREFIXES = {
-    "ТОР-ЛИФТ": "ТЛ",
-    "ПРОТИВОВЕС": "ПВ",
-    "ПРОТИВОВЕС-Т": "ПВТ"
-}
+def generate_unique_contract_number(db: Session, doc_type: str, company: str, conclusion_date: date) -> str:
+    """
+    Генерирует уникальный номер: [Тип]-[Префикс]-[Год]-[Порядковый номер]
+    Пример: ДОГ-ТЛ-2026-001
+    """
+    from database import Contract # Импорт внутри для избежания циклической зависимости
 
-def generate_unique_contract_number(doc_type: str, company: str, conclusion_date: date) -> str:
-    """
-    Генерирует уникальный номер согласно формату: [Тип док]-[Префикс]-[ММГГ]
-    Пример: ДОГ-ТЛ-0126
-    """
+    # 1. Код документа
+    doc_code = DOC_TYPE_MAP.get(doc_type.upper() if doc_type else "ДОГ", "ДОГ")
     
-    # Определяем код документа (по умолчанию ДОГ)
-    doc_code = DOC_TYPE_MAP.get(doc_type.upper(), "ДОГ")
-    
-    # Определяем префикс компании
-    comp_upper = company.upper()
+    # 2. Префикс компании
+    comp_upper = str(company or "").upper()
     if "ТОР-ЛИФТ" in comp_upper or "ТОР ЛИФТ" in comp_upper:
         prefix = "ТЛ"
     elif "ПРОТИВОВЕС-Т" in comp_upper:
@@ -34,9 +30,24 @@ def generate_unique_contract_number(doc_type: str, company: str, conclusion_date
     elif "ПРОТИВОВЕС" in comp_upper:
         prefix = "ПВ"
     else:
-        prefix = "??"
+        prefix = "ПР" # Прочее
 
-    # Формируем ММГГ
-    date_part = conclusion_date.strftime("%m%y")
+    # 3. Год (берем из даты договора или текущий)
+    year_str = str(conclusion_date.year) if conclusion_date else str(date.today().year)
 
-    return f"{doc_code}-{prefix}-{date_part}"
+    # 4. Ищем последний номер в базе для этого шаблона
+    pattern = f"{doc_code}-{prefix}-{year_str}-%"
+    last_contract = db.query(Contract.unique_contract_number)\
+        .filter(Contract.unique_contract_number.like(pattern))\
+        .order_by(Contract.unique_contract_number.desc())\
+        .first()
+
+    next_num = 1
+    if last_contract:
+        # Извлекаем число из конца строки (ДОГ-ТЛ-2026-005 -> 5)
+        match = re.search(r'-(\d+)$', last_contract[0])
+        if match:
+            next_num = int(match.group(1)) + 1
+
+    # Форматируем номер с ведущими нулями (001, 002...)
+    return f"{doc_code}-{prefix}-{year_str}-{next_num:03d}"

@@ -253,6 +253,19 @@ function ContractAnalysis() {
     setAnalysisResults(prev => prev.filter(r => r.id !== resultId));
   };
 
+  const handleResetSystem = async () => {
+    if (!window.confirm('ВНИМАНИЕ! Это полностью удалит все договоры из базы данных и файлы из хранилища. Продолжить?')) return;
+    try {
+      const res = await fetch('http://localhost:8000/reset-system', { method: 'POST' });
+      if (res.ok) {
+        alert('Система успешно очищена.');
+        window.location.reload();
+      }
+    } catch (err) {
+      alert('Ошибка при очистке: ' + err.message);
+    }
+  };
+
   return (
     <div className="analysis-page-container">
       <div className="analysis-header">
@@ -260,6 +273,9 @@ function ContractAnalysis() {
           ← Вернуться к списку договоров
         </button>
         <h2>Анализ новых договоров</h2>
+        <button onClick={handleResetSystem} className="reset-system-btn">
+          ⚠️ Сбросить систему
+        </button>
       </div>
       
       {!analysisResults.length && !selectedFiles.length && (

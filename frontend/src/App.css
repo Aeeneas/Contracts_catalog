@@ -96,6 +96,23 @@ body {
   min-height: 80vh;
 }
 
+.reset-system-btn {
+  background-color: #fff;
+  color: #dc3545;
+  border: 1px solid #dc3545;
+  padding: 8px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  margin-left: auto;
+}
+
+.reset-system-btn:hover {
+  background-color: #dc3545;
+  color: white;
+}
+
 .analysis-header {
   width: 100%;
   display: flex;
