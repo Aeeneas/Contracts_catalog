@@ -9,6 +9,93 @@ body {
   color: #212529; /* Темный текст */
 }
 
+/* Стили для центрированной зоны загрузки */
+.analysis-page-container {
+  width: 98%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 80vh;
+}
+
+.analysis-header {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 30px;
+}
+
+.back-btn-minimal {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0;
+  margin-bottom: 10px;
+  transition: all 0.2s;
+}
+
+.back-btn-minimal:hover {
+  text-decoration: underline;
+  opacity: 0.8;
+}
+
+.centered-drop-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 50px;
+}
+
+.drop-zone {
+  border: 3px dashed #ced4da;
+  border-radius: 20px;
+  padding: 100px 50px;
+  cursor: pointer;
+  width: 100%;
+  max-width: 800px;
+  background-color: white;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+}
+
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: #007bff;
+  background-color: #f8fbff;
+  transform: scale(1.01);
+}
+
+.drop-zone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.drop-icon {
+  font-size: 5rem;
+}
+
+.drop-zone p {
+  font-size: 1.6rem;
+  font-weight: 500;
+  color: #343a40;
+  margin: 0;
+}
+
+.drop-hint {
+  color: #6c757d;
+  font-size: 1.1rem;
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
@@ -68,6 +155,38 @@ code {
   width: 98%;
   max-width: none;
   margin-bottom: 20px;
+}
+
+.title-group {
+  text-align: left;
+}
+
+.subtitle {
+  color: #6c757d;
+  margin-top: -25px;
+  font-size: 1.1rem;
+}
+
+.button-group {
+  display: flex;
+  gap: 15px;
+}
+
+.analyze-nav-btn {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.analyze-nav-btn:hover {
+  background-color: #0056b3;
+  transform: translateY(-2px);
 }
 
 .open-folder-btn {

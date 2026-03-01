@@ -481,6 +481,99 @@ async def upload_documents(files: List[UploadFile] = File(...), db: Session = De
         content={"message": "Files processed", "details": processed_files_info}
     )
 
+class ContractUpdate(BaseModel):
+    company: Optional[str] = None
+    customer: Optional[str] = None
+    work_type: Optional[str] = None
+    contract_cost: Optional[float] = None
+    monthly_cost: Optional[float] = None
+    conclusion_date: Optional[date] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    stages_info: Optional[str] = None
+    short_description: Optional[str] = None
+
+@app.delete("/contracts/{contract_id}")
+async def delete_contract(contract_id: int, db: Session = Depends(get_db)):
+    """
+    Удаляет договор из базы данных и соответствующий файл с диска.
+    """
+    db_contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not db_contract:
+        raise HTTPException(status_code=404, detail="Договор не найден")
+
+    # Удаляем физический файл, если он существует
+    file_path = db_contract.catalog_path
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            print(f"Ошибка при удалении файла {file_path}: {e}")
+            # Мы продолжаем удаление из БД, даже если файл не удалось удалить
+
+    # Удаляем запись из БД
+    db.delete(db_contract)
+    db.commit()
+    
+    return {"status": "success", "message": f"Договор {contract_id} и файл удалены"}
+
+@app.put("/contracts/{contract_id}", response_model=ContractResponse)
+async def update_contract(contract_id: int, updated_data: ContractUpdate, db: Session = Depends(get_db)):
+    """
+    Обновляет данные договора и перемещает файл, если изменились ключевые поля.
+    """
+    db_contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not db_contract:
+        raise HTTPException(status_code=404, detail="Договор не найден")
+
+    # Сохраняем старые данные для проверки необходимости перемещения файла
+    old_company = db_contract.company
+    old_customer = db_contract.customer
+    old_work_type = db_contract.work_type
+    old_year = db_contract.conclusion_date.year
+    old_path = db_contract.catalog_path
+
+    # Обновляем поля в объекте БД
+    update_dict = updated_data.model_dump(exclude_unset=True)
+    for key, value in update_dict.items():
+        setattr(db_contract, key, value)
+
+    # Проверяем, нужно ли перемещать файл (если изменились ключевые метаданные)
+    new_year = db_contract.conclusion_date.year
+    meta_changed = (
+        old_company != db_contract.company or
+        old_customer != db_contract.customer or
+        old_work_type != db_contract.work_type or
+        old_year != new_year
+    )
+
+    if meta_changed and old_path and os.path.exists(old_path):
+        try:
+            # Формируем новый путь
+            new_dir_path = os.path.join(
+                FINAL_STORAGE_ROOT,
+                sanitize_filename(db_contract.company),
+                sanitize_filename(db_contract.customer),
+                sanitize_filename(db_contract.work_type),
+                str(new_year)
+            )
+            os.makedirs(new_dir_path, exist_ok=True)
+            
+            file_name = os.path.basename(old_path)
+            # Если изменился номер договора (может понадобиться регенерация, но пока оставим старый префикс)
+            new_file_path = os.path.join(new_dir_path, file_name)
+            
+            if old_path != new_file_path:
+                shutil.move(old_path, new_file_path)
+                db_contract.catalog_path = new_file_path
+        except Exception as e:
+            print(f"Ошибка при перемещении файла: {e}")
+            # Продолжаем сохранение в БД даже если файл не удалось переместить
+
+    db.commit()
+    db.refresh(db_contract)
+    return db_contract
+
 @app.get("/contracts", response_model=List[ContractResponse])
 async def get_all_contracts(db: Session = Depends(get_db), skip: int = 0, limit: int = 100):
     """

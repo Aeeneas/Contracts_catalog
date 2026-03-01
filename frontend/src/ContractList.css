@@ -57,6 +57,27 @@
     font-size: 0.9rem;
 }
 
+.contracts-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.contracts-table th.sortable:hover {
+    background-color: #e9ecef;
+    color: #007bff;
+}
+
+.contracts-table th span.sort-icon {
+    font-size: 0.8rem;
+    margin-left: 5px;
+    color: #adb5bd;
+}
+
+.contracts-table th.active span.sort-icon {
+    color: #007bff;
+}
+
 .contracts-table th {
     background-color: #f8f9fa;
     color: #495057;

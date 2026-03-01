@@ -18,6 +18,76 @@
     padding-bottom: 15px;
 }
 
+.details-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.header-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.edit-btn, .save-btn, .cancel-btn-small {
+    padding: 8px 15px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.2s ease;
+}
+
+.edit-btn {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.delete-btn {
+    background-color: #dc3545;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.2s ease;
+}
+
+.delete-btn:hover {
+    background-color: #c82333;
+    transform: translateY(-1px);
+}
+
+.save-btn {
+    background-color: #28a745;
+    color: white;
+}
+
+.cancel-btn-small {
+    background-color: #6c757d;
+    color: white;
+}
+
+.edit-btn:hover, .save-btn:hover, .cancel-btn-small:hover {
+    transform: translateY(-1px);
+    opacity: 0.9;
+}
+
+.detail-item input, .detail-item select, .detail-item textarea {
+    padding: 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    margin-top: 5px;
+    font-size: 1rem;
+    background-color: white;
+}
+
+.pre-wrap {
+    white-space: pre-wrap;
+}
+
 .details-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

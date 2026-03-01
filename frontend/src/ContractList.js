@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom'; // Добавлен импорт
 import './ContractList.css';
 
 function ContractList() {
-    const navigate = useNavigate(); // Инициализация useNavigate
+    const navigate = useNavigate();
     const [contracts, setContracts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortConfig, setSortConfig] = useState({ key: 'upload_date', direction: 'desc' }); // По умолчанию новые сверху
 
     useEffect(() => {
         const fetchContracts = async () => {
@@ -28,7 +29,34 @@ function ContractList() {
         fetchContracts();
     }, []);
 
-    const filteredContracts = contracts.filter(contract =>
+    const handleSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const sortedContracts = React.useMemo(() => {
+        let sortableContracts = [...contracts];
+        if (sortConfig.key !== null) {
+            sortableContracts.sort((a, b) => {
+                const aValue = a[sortConfig.key];
+                const bValue = b[sortConfig.key];
+
+                if (aValue < bValue) {
+                    return sortConfig.direction === 'asc' ? -1 : 1;
+                }
+                if (aValue > bValue) {
+                    return sortConfig.direction === 'asc' ? 1 : -1;
+                }
+                return 0;
+            });
+        }
+        return sortableContracts;
+    }, [contracts, sortConfig]);
+
+    const filteredContracts = sortedContracts.filter(contract =>
         contract.unique_contract_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
         contract.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
         contract.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -37,11 +65,11 @@ function ContractList() {
     );
 
     const handleRowClick = (contractId) => {
-        navigate(`/contract/${contractId}`); // Переход на страницу деталей
+        navigate(`/contract/${contractId}`);
     };
 
     const handleOpenFolder = async (e, contractId) => {
-        e.stopPropagation(); // Чтобы не срабатывал клик по строке (переход к деталям)
+        e.stopPropagation();
         try {
             const response = await fetch(`http://localhost:8000/contracts/${contractId}/open-folder`, {
                 method: 'POST'
@@ -54,6 +82,11 @@ function ContractList() {
             console.error('Ошибка при открытии папки договора:', err);
             alert('Ошибка сети при попытке открыть папку.');
         }
+    };
+
+    const getSortIcon = (key) => {
+        if (sortConfig.key !== key) return ' ↕';
+        return sortConfig.direction === 'asc' ? ' ↑' : ' ↓';
     };
 
     if (loading) return <p>Загрузка договоров...</p>;
@@ -73,12 +106,24 @@ function ContractList() {
                 <table className="contracts-table">
                     <thead>
                         <tr>
-                            <th>Уник. номер</th>
-                            <th>Компания</th>
-                            <th>Заказчик</th>
-                            <th>Тип работ</th>
-                            <th>Стоимость</th>
-                            <th>Дата заключения</th>
+                            <th onClick={() => handleSort('unique_contract_number')} className={`sortable ${sortConfig.key === 'unique_contract_number' ? 'active' : ''}`}>
+                                Уник. номер <span className="sort-icon">{getSortIcon('unique_contract_number')}</span>
+                            </th>
+                            <th onClick={() => handleSort('company')} className={`sortable ${sortConfig.key === 'company' ? 'active' : ''}`}>
+                                Компания <span className="sort-icon">{getSortIcon('company')}</span>
+                            </th>
+                            <th onClick={() => handleSort('customer')} className={`sortable ${sortConfig.key === 'customer' ? 'active' : ''}`}>
+                                Заказчик <span className="sort-icon">{getSortIcon('customer')}</span>
+                            </th>
+                            <th onClick={() => handleSort('work_type')} className={`sortable ${sortConfig.key === 'work_type' ? 'active' : ''}`}>
+                                Тип работ <span className="sort-icon">{getSortIcon('work_type')}</span>
+                            </th>
+                            <th onClick={() => handleSort('contract_cost')} className={`sortable ${sortConfig.key === 'contract_cost' ? 'active' : ''}`}>
+                                Стоимость <span className="sort-icon">{getSortIcon('contract_cost')}</span>
+                            </th>
+                            <th onClick={() => handleSort('conclusion_date')} className={`sortable ${sortConfig.key === 'conclusion_date' ? 'active' : ''}`}>
+                                Дата заключения <span className="sort-icon">{getSortIcon('conclusion_date')}</span>
+                            </th>
                             <th>Краткое описание</th>
                             <th>Действия</th>
                         </tr>
