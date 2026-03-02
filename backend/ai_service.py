@@ -13,7 +13,7 @@ def _call_deepseek(prompt: str, json_mode: bool = False, system_msg: str = None)
         return None
 
     if system_msg is None:
-        system_msg = "You are a specialized legal assistant. Your primary mission is to find the INN, critical DATES, and the EXACT NUMBER of elevators mentioned for maintenance or installation."
+        system_msg = "You are a professional legal expert specializing in elevator industry contracts. Your task is to accurately classify works and extract data."
 
     headers = {
         "Content-Type": "application/json",
@@ -42,19 +42,17 @@ def _call_deepseek(prompt: str, json_mode: bool = False, system_msg: str = None)
         return None
 
 def get_smart_chunks(text: str) -> str:
-    """Извлечение фрагментов с фокусом на ИНН, ДАТЫ и КОЛИЧЕСТВО ЛИФТОВ."""
+    """Извлечение фрагментов с фокусом на ИНН, ДАТЫ и КЛАССИФИКАЦИЮ РАБОТ."""
     if not text: return ""
     head = text[:35000]
     tail = text[-35000:] if len(text) > 35000 else ""
     
-    # Контекст для дат и лифтов
     context = ""
     keywords = [
-        r"\d{2}\.\d{2}\.20\d{2}", 
-        r"январ", r"феврал", r"март", r"апрел", r"ма(?:я|й)", r"июн", 
-        r"июл", r"август", r"сентябр", r"октябр", r"ноябр", r"декабр",
-        r"действует до", r"срок действия", r"количество лифтов", r"единиц",
-        r"\d+\s*шт", r"\d+\s*\(.*\)\s*лифт", r"перечень оборудования"
+        r"ремонт", r"замена", r"модернизация", r"капитальный", 
+        r"дефектная ведомость", r"техническое обслуживание", r"монтаж",
+        r"пусконаладочные", r"экспертиза", r"периодический", r"ежемесячно",
+        r"количество лифтов", r"стоимость", r"ИНН"
     ]
     
     for pattern in keywords:
@@ -64,17 +62,10 @@ def get_smart_chunks(text: str) -> str:
             chunk = text[start:end]
             if not any(chunk[:50] in existing for existing in context.split("---")):
                 context += f"\n--- ФРАГМЕНТ ДЛЯ АНАЛИЗА ---\n{chunk}\n"
-            if len(context) > 50000: break
+            if len(context) > 60000: break
             
-    inn_matches = list(re.finditer(r'(?i)(ИНН|IНН|ИHH|77\d{8}|\d{10}|\d{12})', text))
-    inn_context = ""
-    for match in inn_matches[:5]:
-        start = max(0, match.start() - 500)
-        end = min(len(text), match.end() + 500)
-        inn_context += f"\n--- ИНН КОНТЕКСТ ---\n{text[start:end]}\n"
-
-    combined_text = f"--- НАЧАЛО ---\n{head}\n\n{context}\n\n{inn_context}\n\n--- КОНЕЦ ---\n{tail}"
-    return combined_text[:135000]
+    combined_text = f"--- НАЧАЛО ---\n{head}\n\n{context}\n\n--- КОНЕЦ ---\n{tail}"
+    return combined_text[:140000]
 
 def fetch_data_from_dadata(inn: str) -> Dict[str, Any]:
     if not settings.DADATA_API_KEY: return {}
@@ -113,34 +104,28 @@ def extract_contract_data(contract_text: str) -> Dict[str, Any]:
     smart_text = get_smart_chunks(contract_text)
     
     prompt = f"""
-    ### ЗАДАЧА: ИЗВЛЕЧЬ ИНН, ДАТЫ И КОЛИЧЕСТВО ЛИФТОВ.
+    ### ЗАДАЧА: КЛАССИФИКАЦИЯ РАБОТ И ИЗВЛЕЧЕНИЕ ДАННЫХ.
     
-    ИНСТРУКЦИЯ ПО ЛИФТАМ:
-    Найди в тексте количество лифтов, которые принимаются на обслуживание или подлежат монтажу. 
-    Обычно это фразы: "количество лифтов: 5", "5 (пять) лифтов", "монтаж 2-х лифтов".
-    Если есть список адресов, посчитай количество уникальных адресов/лифтов.
-
+    ИНСТРУКЦИЯ ПО ТИПАМ РАБОТ (work_type):
+    1. 'ТО' — регулярное ежемесячное ТО.
+    2. 'КАПИТАЛЬНЫЕ РАБОТЫ' — РЕМОНТ, ЗАМЕНА узлов, МОДЕРНИЗАЦИЯ.
+    3. 'МОНТАЖ' — установка нового лифта.
+    
     JSON FORMAT:
     - doc_type: (ДОГ | ДС | АКТ | КС-2 | КС-3)
     - company: (ТОР-ЛИФТ | Противовес | Противовес-Т | null)
     - customer: Название заказчика
     - customer_inn: ИНН
-    - customer_ogrn: ОГРН
-    - customer_ceo: Директор
-    - customer_legal_address: Юр. адрес
-    - customer_contacts: Тел/Email
-    - customer_bank_details: р/с, БИК, Банк
-    - work_type: (ТО | МОНТАЖ | СТРОЙКА | ПРОЕКТИРОВАНИЕ | КАПИТАЛЬНЫЕ РАБОТЫ | null)
+    - work_type: (ТО | МОНТАЖ | СТРОЙКА | ПРОЕКТИРОВАНИЕ | КАПИТАЛЬНЫЕ РАБОТЫ)
     - work_address: Адрес объекта
     - elevator_addresses: Список адресов лифтов (строго каждый с новой строки)
     - elevator_count: ОБЩЕЕ КОЛИЧЕСТВО ЛИФТОВ (число)
-    - contract_cost: Сумма (число)
+    - contract_cost: Общая сумма (число)
     - monthly_cost: В месяц (число)
     - conclusion_date: YYYY-MM-DD
     - start_date: YYYY-MM-DD
     - end_date: YYYY-MM-DD
-    - stages_info: Этапы
-    - ultra_short_summary: Суть
+    - ultra_short_summary: Суть ОДНОЙ ФРАЗОЙ
 
     ТЕКСТ:
     {smart_text}
@@ -151,6 +136,7 @@ def extract_contract_data(contract_text: str) -> Dict[str, Any]:
         try:
             data = json.loads(response_text)
             
+            # 1. ОБРАБОТКА ИНН И DADATA
             if data.get("customer_inn"):
                 inn = re.sub(r'\D', '', str(data["customer_inn"]))
                 if len(inn) in [10, 12]:
@@ -160,30 +146,38 @@ def extract_contract_data(contract_text: str) -> Dict[str, Any]:
                         if official.get(k): data[k] = official[k]
                 else: data["customer_inn"] = None
 
-            for field in ["contract_cost", "monthly_cost"]:
-                if data.get(field) and isinstance(data[field], str):
-                    clean_val = re.sub(r'[^\d.]', '', data[field])
-                    data[field] = float(clean_val) if clean_val else None
+            # 2. ОЧИСТКА СПИСКА АДРЕСОВ (Конвертация из списка в строку, если нужно)
+            if isinstance(data.get("elevator_addresses"), list):
+                data["elevator_addresses"] = "\n".join(data["elevator_addresses"])
 
+            # 3. ОЧИСТКА ЧИСЕЛ
+            for field in ["contract_cost", "monthly_cost", "elevator_count"]:
+                if data.get(field) is not None:
+                    if isinstance(data[field], str):
+                        clean_val = re.sub(r'[^\d.]', '', data[field])
+                        data[field] = float(clean_val) if clean_val else 0
+                    if field == "elevator_count": data[field] = int(data[field])
+
+            # 4. МАТЕМАТИЧЕСКИЙ ПЕРЕРАСЧЕТ
             if data.get("work_type") == "ТО" and not data.get("monthly_cost"):
                 calc_val = calculate_monthly_cost_fallback(data)
                 if calc_val: data["monthly_cost"] = calc_val
+            
+            if data.get("work_type") == "КАПИТАЛЬНЫЕ РАБОТЫ":
+                data["monthly_cost"] = None
 
-            # Если ИИ не вернул число в count, попробуем посчитать по списку адресов
+            # 5. ПОДСЧЕТ ЛИФТОВ, ЕСЛИ ИИ НЕ ВЕРНУЛ ЧИСЛО
             if not data.get("elevator_count") and data.get("elevator_addresses"):
-                addrs = [s for s in data["elevator_addresses"].split('\n') if s.strip()]
+                addrs = [s for s in str(data["elevator_addresses"]).split('\n') if s.strip()]
                 data["elevator_count"] = len(addrs)
 
             return data
-        except: return {"error": "JSON error"}
+        except Exception as e:
+            print(f"Error processing AI response: {e}")
+            return {"error": str(e)}
     return {"error": "No response"}
 
 def summarize_contract(contract_text: str) -> Optional[str]:
     smart_text = get_smart_chunks(contract_text)
     prompt = f"Напиши резюме договора (Стороны, Предмет, Деньги, Сроки) на основе текста:\n{smart_text}"
     return _call_deepseek(prompt, json_mode=False)
-
-def generate_ultra_short_summary(work_type: str, address: str, full_summary: str) -> str:
-    prompt = f"Короткая фраза (Вид работ + Адрес): {work_type}, {address}, {full_summary[:300]}"
-    res = _call_deepseek(prompt, json_mode=False)
-    return res.strip() if res else f"{work_type} по адресу {address}"

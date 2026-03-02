@@ -111,14 +111,17 @@ function ContractAnalysis() {
   const handleFinalize = async (resultId) => {
     const result = analysisResults.find(r => r.id === resultId);
     if (!result) return;
-    if (!result.data.company || !result.data.customer || !result.data.work_type) { alert('Заполните обязательные поля: Компания, Заказчик и Тип работ'); return; }
+    if (!result.data.company || !result.data.customer || !result.data.work_type) { alert('Заполните: Компания, Заказчик и Тип работ'); return; }
+    
     const sanitizedData = {};
     Object.keys(result.data).forEach(key => {
       let val = result.data[key];
       if (val === '') val = null;
       if (['contract_cost', 'monthly_cost'].includes(key)) { val = val === null ? 0 : parseFloat(val); }
+      if (key === 'elevator_count') { val = val === null ? 0 : parseInt(val); }
       sanitizedData[key] = val;
     });
+
     try {
       const response = await fetch('http://localhost:8000/finalize', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -127,48 +130,34 @@ function ContractAnalysis() {
       if (response.ok) {
         setAnalysisResults(prev => prev.filter(r => r.id !== resultId));
         addLog(`Файл сохранен: ${result.filename}`, 'success');
+      } else {
+        const err = await response.json();
+        alert(`Ошибка валидации: ${JSON.stringify(err.detail)}`);
       }
     } catch (e) { addLog(`Ошибка: ${e.message}`, 'error'); }
   };
 
   const handleCancel = (id) => setAnalysisResults(prev => prev.filter(r => r.id !== id));
 
-  const handleResetSystem = async () => {
-    if (!window.confirm('Очистить всю базу данных и файлы?')) return;
-    try {
-      const res = await fetch('http://localhost:8000/reset-system', { method: 'POST' });
-      if (res.ok) { alert('Система очищена'); window.location.reload(); }
-    } catch (err) { alert('Ошибка: ' + err.message); }
-  };
-
   return (
-    <div className="page-container">
+    <div className="analysis-page-container">
       <header className="home-header">
         <div className="header-left">
           <h1>Анализ документов</h1>
           <p className="subtitle">Интеллектуальная обработка файлов</p>
         </div>
-        <div className="header-right">
-          <button onClick={handleResetSystem} className="delete-btn" style={{padding: '10px 20px'}}>
-            Очистить систему
-          </button>
-        </div>
       </header>
 
       {!isAnalyzing && !analysisResults.length && (
         <div className="centered-drop-container">
-          <div className="drop-zone" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} onClick={() => fileInputRef.current.click()}>
-            <div className="drop-zone-content">
-              <p style={{fontSize: '1.2rem', fontWeight: 'bold'}}>Перетащите файлы сюда или нажмите для выбора</p>
-              <button className="drop-btn-action" style={{marginTop: '15px'}}>Выбрать файлы</button>
-            </div>
+          <div className="drop-zone" onClick={() => fileInputRef.current.click()}>
+            <p style={{fontSize: '1.2rem', fontWeight: 'bold'}}>Перетащите файлы сюда или нажмите для выбора</p>
+            <button className="drop-btn-action" style={{marginTop: '15px'}}>Выбрать файлы</button>
             <input type="file" multiple hidden ref={fileInputRef} onChange={handleFileChange} />
           </div>
           {selectedFiles.length > 0 && (
-            <div className="file-list-container" style={{maxWidth: '100%', marginTop: '20px'}}>
-              <ul className="file-list">
-                {selectedFiles.map((f, i) => <li key={i}>{f.name}</li>)}
-              </ul>
+            <div className="file-list-container" style={{marginTop: '20px'}}>
+              <ul className="file-list">{selectedFiles.map((f, i) => <li key={i}>{f.name}</li>)}</ul>
               <button onClick={handleAnalyze} className="upload-button" style={{backgroundColor: '#3498db'}}>Начать анализ</button>
             </div>
           )}
@@ -177,15 +166,9 @@ function ContractAnalysis() {
 
       {(isAnalyzing || logs.length > 0) && (
         <div style={{marginTop: '20px'}}>
-          <div className="progress-container" style={{maxWidth: '100%'}}>
-            <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
-          </div>
-          <div className="analysis-console" style={{maxWidth: '100%'}} ref={consoleRef}>
-            {logs.map((log, i) => (
-              <div key={i} className={`console-line ${log.status}`}>
-                <span className="console-time">[{log.time}]</span> {log.msg}
-              </div>
-            ))}
+          <div className="progress-container"><div className="progress-bar-fill" style={{ width: `${progress}%` }}></div></div>
+          <div className="analysis-console" ref={consoleRef}>
+            {logs.map((log, i) => (<div key={i} className={`console-line ${log.status}`}><span className="console-time">[{log.time}]</span> {log.msg}</div>))}
           </div>
         </div>
       )}
@@ -193,15 +176,12 @@ function ContractAnalysis() {
       <div className="analysis-results">
         {analysisResults.map((result) => (
           <div key={result.id} className="analysis-card" style={{borderLeft: '6px solid #2c3e50'}}>
-            <div className="card-header-flex" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px'}}>
+            <div className="card-header-flex" style={{display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px'}}>
                 <h3 style={{margin: 0, fontWeight: 'bold'}}>Файл: {result.filename}</h3>
                 <span className="badge-ai">Анализ завершен</span>
             </div>
             
-            {result.status === 'error' ? (
-              <p className="error-msg">{result.error}</p>
-            ) : (
-              <div className="form-grid">
+            <div className="form-grid">
                 <div className="form-group-title full-width">Основная информация</div>
                 <label><strong>Тип документа</strong>
                   <select value={result.data.doc_type} onChange={e => handleFieldChange(result.id, 'doc_type', e.target.value)}>
@@ -215,7 +195,7 @@ function ContractAnalysis() {
                 </label>
                 <label><strong>Тип работ</strong>
                   <select value={result.data.work_type} onChange={e => handleFieldChange(result.id, 'work_type', e.target.value)}>
-                    <option value="">Выберите...</option><option value="ТО">ТО</option><option value="МОНТАЖ">МОНТАЖ</option><option value="СТРОЙКА">СТРОЙКА</option><option value="ПРОЕКТИРОВАНИЕ">ПРОЕКТИРОВАНИЕ</option>
+                    <option value="">Выберите...</option><option value="ТО">ТО</option><option value="МОНТАЖ">МОНТАЖ</option><option value="СТРОЙКА">СТРОЙКА</option><option value="ПРОЕКТИРОВАНИЕ">ПРОЕКТИРОВАНИЕ</option><option value="КАПИТАЛЬНЫЕ РАБОТЫ">КАПИТАЛЬНЫЕ РАБОТЫ</option>
                   </select>
                 </label>
 
@@ -223,54 +203,28 @@ function ContractAnalysis() {
                 <label className="full-width"><strong>Заказчик</strong>
                   <input type="text" value={result.data.customer} onChange={e => handleFieldChange(result.id, 'customer', e.target.value)} />
                 </label>
-                <label><strong>ИНН</strong>
-                  <input type="text" value={result.data.customer_inn} onChange={e => handleFieldChange(result.id, 'customer_inn', e.target.value)} />
-                </label>
-                <label><strong>ОГРН</strong>
-                  <input type="text" value={result.data.customer_ogrn} onChange={e => handleFieldChange(result.id, 'customer_ogrn', e.target.value)} />
-                </label>
-                <label><strong>Директор</strong>
-                  <input type="text" value={result.data.customer_ceo} onChange={e => handleFieldChange(result.id, 'customer_ceo', e.target.value)} />
-                </label>
-                <label className="full-width"><strong>Юридический адрес</strong>
-                  <input type="text" value={result.data.customer_legal_address} onChange={e => handleFieldChange(result.id, 'customer_legal_address', e.target.value)} />
-                </label>
-                <label className="full-width"><strong>Контакты</strong>
-                  <input type="text" value={result.data.customer_contacts} onChange={e => handleFieldChange(result.id, 'customer_contacts', e.target.value)} />
-                </label>
-                <label className="full-width"><strong>Реквизиты</strong>
-                  <textarea value={result.data.customer_bank_details} onChange={e => handleFieldChange(result.id, 'customer_bank_details', e.target.value)} rows="2" />
-                </label>
+                <label><strong>ИНН</strong><input type="text" value={result.data.customer_inn} onChange={e => handleFieldChange(result.id, 'customer_inn', e.target.value)} /></label>
+                <label><strong>ОГРН</strong><input type="text" value={result.data.customer_ogrn} onChange={e => handleFieldChange(result.id, 'customer_ogrn', e.target.value)} /></label>
+                <label><strong>Директор</strong><input type="text" value={result.data.customer_ceo} onChange={e => handleFieldChange(result.id, 'customer_ceo', e.target.value)} /></label>
+                <label className="full-width"><strong>Юридический адрес</strong><input type="text" value={result.data.customer_legal_address} onChange={e => handleFieldChange(result.id, 'customer_legal_address', e.target.value)} /></label>
+                <label className="full-width"><strong>Реквизиты</strong><textarea value={result.data.customer_bank_details} onChange={e => handleFieldChange(result.id, 'customer_bank_details', e.target.value)} rows="2" /></label>
 
                 <div className="form-group-title full-width">Сроки и стоимость</div>
-                <label className="full-width"><strong>Адрес работ</strong>
-                  <input type="text" value={result.data.work_address} onChange={e => handleFieldChange(result.id, 'work_address', e.target.value)} />
+                <label className="full-width"><strong>Адрес работ</strong><input type="text" value={result.data.work_address} onChange={e => handleFieldChange(result.id, 'work_address', e.target.value)} /></label>
+                <label className="full-width"><strong>Адреса лифтов (через точку с запятой)</strong>
+                  <textarea value={result.data.elevator_addresses} onChange={e => handleFieldChange(result.id, 'elevator_addresses', e.target.value)} rows="3" />
                 </label>
-                <label><strong>Общая сумма</strong>
-                  <input type="number" value={result.data.contract_cost} onChange={e => handleFieldChange(result.id, 'contract_cost', parseFloat(e.target.value))} />
-                </label>
-                <label><strong>В месяц</strong>
-                  <input type="number" value={result.data.monthly_cost} onChange={e => handleFieldChange(result.id, 'monthly_cost', parseFloat(e.target.value))} />
-                </label>
-                <label><strong>Дата заключения</strong>
-                  <input type="date" value={result.data.conclusion_date} onChange={e => handleFieldChange(result.id, 'conclusion_date', e.target.value)} />
-                </label>
-                <label><strong>С</strong>
-                  <input type="date" value={result.data.start_date} onChange={e => handleFieldChange(result.id, 'start_date', e.target.value)} />
-                </label>
-                <label><strong>По</strong>
-                  <input type="date" value={result.data.end_date} onChange={e => handleFieldChange(result.id, 'end_date', e.target.value)} />
-                </label>
+                <label><strong>Общая сумма</strong><input type="number" value={result.data.contract_cost} onChange={e => handleFieldChange(result.id, 'contract_cost', parseFloat(e.target.value))} /></label>
+                <label><strong>В месяц</strong><input type="number" value={result.data.monthly_cost} onChange={e => handleFieldChange(result.id, 'monthly_cost', parseFloat(e.target.value))} /></label>
+                <label><strong>Количество лифтов</strong><input type="number" value={result.data.elevator_count} onChange={e => handleFieldChange(result.id, 'elevator_count', parseInt(e.target.value))} /></label>
+                <label><strong>Дата заключения</strong><input type="date" value={result.data.conclusion_date} onChange={e => handleFieldChange(result.id, 'conclusion_date', e.target.value)} /></label>
+                <label><strong>Начало</strong><input type="date" value={result.data.start_date} onChange={e => handleFieldChange(result.id, 'start_date', e.target.value)} /></label>
+                <label><strong>Окончание</strong><input type="date" value={result.data.end_date} onChange={e => handleFieldChange(result.id, 'end_date', e.target.value)} /></label>
 
                 <div className="form-group-title full-width">Резюме</div>
-                <label className="full-width"><strong>Сводка</strong>
-                  <input type="text" value={result.data.ultra_short_summary} onChange={e => handleFieldChange(result.id, 'ultra_short_summary', e.target.value)} />
-                </label>
-                <label className="full-width"><strong>Полное описание</strong>
-                  <textarea value={result.data.short_description} onChange={e => handleFieldChange(result.id, 'short_description', e.target.value)} rows="12" style={{minHeight: '200px'}} />
-                </label>
-              </div>
-            )}
+                <label className="full-width"><strong>Сводка</strong><input type="text" value={result.data.ultra_short_summary} onChange={e => handleFieldChange(result.id, 'ultra_short_summary', e.target.value)} /></label>
+                <label className="full-width"><strong>Полное описание</strong><textarea value={result.data.short_description} onChange={e => handleFieldChange(result.id, 'short_description', e.target.value)} rows="12" style={{minHeight: '200px'}} /></label>
+            </div>
             <div className="card-actions">
               <button onClick={() => handleFinalize(result.id)} className="confirm-btn">Сохранить в реестр</button>
               <button onClick={() => handleCancel(result.id)} className="cancel-btn">Удалить из очереди</button>

@@ -71,10 +71,6 @@ body {
   background-color: rgba(255,255,255,0.1);
 }
 
-.nav-link.highlight {
-  color: #3498db;
-}
-
 /* Контейнеры */
 .App-content {
   flex: 1;
@@ -126,13 +122,30 @@ body {
 
 .contracts-table th {
   background-color: #f8f9fa;
-  padding: 12px 15px;
+  padding: 0; /* Убираем падинг здесь, переносим внутрь для флекса */
   text-align: left;
   color: #5a6c75;
   font-size: 0.8rem;
   text-transform: uppercase;
   font-weight: 700;
   border-bottom: 2px solid #e1e8ed;
+  vertical-align: middle;
+}
+
+/* Выравнивание содержимого заголовка */
+.header-cell-content {
+  padding: 12px 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  white-space: nowrap;
+}
+
+.sort-icon {
+  color: #3498db;
+  font-size: 0.9rem;
+  opacity: 0.6;
 }
 
 .contracts-table td {
@@ -140,11 +153,11 @@ body {
   border-bottom: 1px solid #eff3f6;
   font-size: 0.9rem;
   color: #333;
+  vertical-align: middle;
 }
 
 .contract-row:hover td {
   background-color: #f1f7ff;
-  cursor: pointer;
 }
 
 /* Карточки */
@@ -154,17 +167,6 @@ body {
   border-radius: 4px;
   padding: 30px;
   margin-bottom: 20px;
-}
-
-.form-group-title {
-  font-size: 0.85rem;
-  font-weight: 800;
-  color: #1a252f;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 15px;
-  border-left: 4px solid #3498db;
-  padding-left: 10px;
 }
 
 /* Кнопки */
@@ -195,12 +197,7 @@ button {
   border: 1px solid #e74c3c;
 }
 
-.delete-btn:hover {
-  background-color: #e74c3c;
-  color: #fff;
-}
-
-/* Новые логические статусы */
+/* Статусы */
 .status-badge {
   padding: 4px 10px;
   border-radius: 4px;
@@ -210,20 +207,6 @@ button {
   display: inline-block;
 }
 
-.status-active {
-  background-color: #e6fffa;
-  color: #059669;
-  border: 1px solid #b2f5ea;
-}
-
-.status-ended {
-  background-color: #f7fafc;
-  color: #718096;
-  border: 1px solid #edf2f7;
-}
-
-.status-undefined {
-  background-color: #fffaf0;
-  color: #d97706;
-  border: 1px solid #feebc8;
-}
+.status-active { background-color: #e6fffa; color: #059669; border: 1px solid #b2f5ea; }
+.status-ended { background-color: #f7fafc; color: #718096; border: 1px solid #edf2f7; }
+.status-undefined { background-color: #fffaf0; color: #d97706; border: 1px solid #feebc8; }
