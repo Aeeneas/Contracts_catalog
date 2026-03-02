@@ -1,23 +1,87 @@
 import os
 import fitz # PyMuPDF
 from docx import Document
-
 import pandas as pd
 import win32com.client as win32
 import pythoncom
+import base64
+import requests
+from io import BytesIO
+try:
+    from config import settings
+except ImportError:
+    from .config import settings
 
 def extract_text_from_pdf(pdf_path: str) -> str:
-    """Extracts text from a PDF file."""
+    """Extracts text from a PDF file. If it's a scan, uses OpenAI Vision OCR."""
     text = ""
     try:
         doc = fitz.open(pdf_path)
         for page in doc:
             text += page.get_text()
+        
+        # If very little text is extracted, it's likely a scan
+        if len(text.strip()) < 300 and len(doc) > 0:
+            print(f"PDF {pdf_path} seems to be a scan. Using OpenAI Vision OCR...")
+            return extract_text_via_openai_vision(doc)
+            
         doc.close()
     except Exception as e:
         print(f"Error extracting text from PDF {pdf_path}: {e}")
         return f"Error: Could not extract text from PDF ({e})"
     return text
+
+def extract_text_via_openai_vision(doc: fitz.Document) -> str:
+    """Converts key PDF pages to images and sends them to OpenAI for OCR."""
+    if not settings.OPENAI_API_KEY:
+        return "Error: OpenAI API Key not configured for OCR."
+
+    # Identify key pages: first 5 and last 5 (where most metadata resides)
+    total_pages = len(doc)
+    pages_to_ocr = list(range(min(5, total_pages)))
+    if total_pages > 5:
+        last_pages = list(range(max(5, total_pages - 5), total_pages))
+        pages_to_ocr.extend([p for p in last_pages if p not in pages_to_ocr])
+
+    combined_ocr_text = ""
+    
+    for page_num in pages_to_ocr:
+        page = doc.load_page(page_num)
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2)) # Increase resolution for better OCR
+        img_data = pix.tobytes("png")
+        base64_image = base64.b64encode(img_data).decode('utf-8')
+
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}"
+            }
+            payload = {
+                "model": "gpt-4o-mini", # Using mini for cost-effective OCR, upgrade to gpt-4o if needed
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "This is a page from a contract. Please transcribe all the text you see on this page exactly as it is. Output ONLY the transcribed text."},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                            }
+                        ]
+                    }
+                ],
+                "max_tokens": 2000
+            }
+            response = requests.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers, timeout=60)
+            response.raise_for_status()
+            page_text = response.json()['choices'][0]['message']['content']
+            combined_ocr_text += f"\n--- PAGE {page_num + 1} (OCR) ---\n{page_text}\n"
+        except Exception as e:
+            print(f"Error during OpenAI OCR for page {page_num}: {e}")
+            combined_ocr_text += f"\n[OCR Error on page {page_num + 1}]\n"
+
+    doc.close()
+    return combined_ocr_text
 
 def extract_text_from_docx(docx_path: str) -> str:
     """Extracts text from a DOCX file."""
@@ -36,11 +100,9 @@ def extract_text_from_doc(doc_path: str) -> str:
     text = ""
     word = None
     try:
-        # Initialize COM library for the current thread
         pythoncom.CoInitialize()
         word = win32.Dispatch("Word.Application")
         word.Visible = False
-        # Use absolute path for Word COM
         abs_path = os.path.abspath(doc_path)
         doc = word.Documents.Open(abs_path)
         text = doc.Content.Text
@@ -84,6 +146,7 @@ def extract_text(file_path: str) -> str:
     """
     Extracts text from a given file based on its extension.
     Supports PDF, DOCX, DOC, XLSX, XLS.
+    Automatically detects scans and uses OpenAI OCR for PDFs.
     """
     if not os.path.exists(file_path):
         return "Error: File not found."
@@ -102,48 +165,3 @@ def extract_text(file_path: str) -> str:
         return extract_text_from_xls(file_path)
     else:
         return "Error: Unsupported file type for text extraction."
-
-# Example usage (for testing)
-if __name__ == "__main__":
-    # Create dummy files for testing
-    dummy_pdf_path = "dummy.pdf"
-    dummy_docx_path = "dummy.docx"
-
-    # Create dummy PDF
-    try:
-        # These imports are only for the example usage and might not be available
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.pagesizes import letter
-
-        c = canvas.Canvas(dummy_pdf_path, pagesize=letter)
-        c.drawString(100, 750, "Hello, this is a dummy PDF file.")
-        c.drawString(100, 730, "It contains some sample text for testing.")
-        c.save()
-    except ImportError:
-        print("reportlab not installed. Cannot create dummy PDF.")
-        print("Skipping dummy PDF creation and extraction test.")
-        dummy_pdf_path = None
-    
-    # Create dummy DOCX
-    try:
-        from docx import Document as DocxDocument
-        doc = DocxDocument()
-        doc.add_paragraph("This is a dummy DOCX file.")
-        doc.add_paragraph("It contains some sample text for testing the extractor.")
-        doc.save(dummy_docx_path)
-    except ImportError:
-        print("python-docx not installed. Cannot create dummy DOCX.")
-        print("Skipping dummy DOCX creation and extraction test.")
-        dummy_docx_path = None
-
-    if dummy_pdf_path and os.path.exists(dummy_pdf_path):
-        print(f"\n--- Text from {dummy_pdf_path} ---")
-        pdf_text = extract_text(dummy_pdf_path)
-        print(pdf_text)
-        os.remove(dummy_pdf_path)
-
-    if dummy_docx_path and os.path.exists(dummy_docx_path):
-        print(f"\n--- Text from {dummy_docx_path} ---")
-        docx_text = extract_text(dummy_docx_path)
-        print(docx_text)
-        os.remove(dummy_docx_path)

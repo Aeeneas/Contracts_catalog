@@ -66,24 +66,26 @@ async def process_single_file_stream(file_path: str, filename: str, db: Session)
         yield {"log": "📑 OCR-обработка...", "status": "info"}
         text = extract_text(file_path)
         
-        yield {"log": "🤖 ИИ-анализ...", "status": "info"}
+        yield {"log": "🤖 ИИ-анализ и поиск ИНН...", "status": "info"}
         ai_data = extract_contract_data(text)
         
         inn = ai_data.get("customer_inn")
         if inn:
             cust = db.query(Customer).filter(Customer.inn == inn).first()
             if cust:
-                yield {"log": "✅ Реквизиты взяты из базы", "status": "success"}
+                yield {"log": f"✅ Реквизиты найдены в локальной базе для ИНН {inn}", "status": "success"}
                 ai_data.update({
                     "customer": cust.name, "customer_ogrn": cust.ogrn,
                     "customer_ceo": cust.ceo_name, "customer_legal_address": cust.legal_address,
                     "customer_id": cust.id, "customer_bank_details": cust.bank_details
                 })
+            elif settings.DADATA_API_KEY:
+                yield {"log": f"🌐 Данных в базе нет. Выполнен запрос в DaData для ИНН {inn}", "status": "info"}
         
         yield {"log": "📝 Генерация резюме...", "status": "info"}
         summary = summarize_contract(text)
         
-        yield {"log": "🎉 Готово", "status": "success"}
+        yield {"log": "🎉 Анализ успешно завершен", "status": "success"}
         yield {"final_result": {
             "temp_path": file_path, "filename": filename, "file_hash": file_hash, 
             "extracted_data": ai_data, "summary": summary or "", "status": "analyzed"
@@ -104,6 +106,7 @@ async def analyze_document(file: UploadFile = File(...), db: Session = Depends(g
             while content := await file.read(1024): await out.write(content)
         
         if file.filename.lower().endswith(".zip"):
+            yield f"data: {json.dumps({'log': '📦 Распаковка архива...', 'status': 'info'})}\n\n"
             unpack_path = os.path.join(TMP_UPLOAD_DIR, f"upk_{datetime.now().strftime('%H%M%S')}")
             os.makedirs(unpack_path, exist_ok=True)
             with zipfile.ZipFile(path, 'r') as z: z.extractall(unpack_path)
@@ -135,6 +138,11 @@ async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db))
                     bank_details=data.customer_bank_details
                 )
                 db.add(cust); db.flush()
+            else:
+                cust.name = data.customer or cust.name
+                cust.ogrn = data.customer_ogrn or cust.ogrn
+                cust.ceo_name = data.customer_ceo or cust.ceo_name
+                cust.legal_address = data.customer_legal_address or cust.legal_address
             cust_id = cust.id
 
         # Сохранение файла
@@ -206,6 +214,23 @@ def update_customer(cid: int, data: CustomerUpdate, db: Session = Depends(get_db
     if not cust: raise HTTPException(404)
     for k, v in data.model_dump(exclude_unset=True).items(): setattr(cust, k, v)
     db.commit(); return cust
+
+@app.post("/customers/{cid}/refresh-dadata", response_model=CustomerResponse)
+def refresh_customer_dadata(cid: int, db: Session = Depends(get_db)):
+    from ai_service import fetch_data_from_dadata
+    cust = db.query(Customer).filter(Customer.id == cid).first()
+    if not cust or not cust.inn: raise HTTPException(404, "Заказчик или ИНН не найден")
+    
+    official = fetch_data_from_dadata(cust.inn)
+    if not official: raise HTTPException(400, "DaData не вернула данных для этого ИНН")
+    
+    cust.name = official.get("customer") or cust.name
+    cust.ogrn = official.get("customer_ogrn") or cust.ogrn
+    cust.ceo_name = official.get("customer_ceo") or cust.ceo_name
+    cust.legal_address = official.get("customer_legal_address") or cust.legal_address
+    
+    db.commit(); db.refresh(cust)
+    return cust
 
 # --- СИСТЕМНЫЕ МАРШРУТЫ ---
 
