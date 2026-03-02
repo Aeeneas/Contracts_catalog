@@ -4,14 +4,14 @@ import zipfile
 import aiofiles
 import hashlib
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from typing import List, Optional
 from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
-# Улучшенные импорты (без относительных путей)
+# Улучшенные импорты
 try:
-    from database import get_db, Contract
+    from database import get_db, Contract, Customer
     from config import settings
     from text_extractor import extract_text
     from ai_service import extract_contract_data, summarize_contract
@@ -19,7 +19,7 @@ try:
 except ImportError:
     import sys
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from database import get_db, Contract
+    from database import get_db, Contract, Customer
     from config import settings
     from text_extractor import extract_text
     from ai_service import extract_contract_data, summarize_contract
@@ -31,6 +31,7 @@ import re
 from starlette.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 import subprocess
+import asyncio
 
 def calculate_file_hash(file_path: str) -> str:
     sha256_hash = hashlib.sha256()
@@ -76,6 +77,7 @@ class ContractResponse(BaseModel):
     monthly_cost: Optional[float] = None
     work_address: Optional[str] = None
     elevator_addresses: Optional[str] = None
+    elevator_count: Optional[int] = 0
     stages_info: str
     short_description: str
     ultra_short_summary: Optional[str] = None
@@ -93,17 +95,23 @@ class FinalizeContract(BaseModel):
     doc_type: str = "ДОГ"
     company: str
     customer: str
-    customer_id: Optional[int] = None
+    customer_inn: Optional[str] = None
+    customer_ogrn: Optional[str] = None
+    customer_ceo: Optional[str] = None
+    customer_legal_address: Optional[str] = None
+    customer_contacts: Optional[str] = None
+    customer_bank_details: Optional[str] = None
     work_type: str
     contract_cost: float = 0.0
     monthly_cost: Optional[float] = None
     work_address: Optional[str] = None
     elevator_addresses: Optional[str] = None
+    elevator_count: Optional[int] = 0
     conclusion_date: Optional[date] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
-    stages_info: str = "Один этап"
-    short_description: str = ""
+    stages_info: Optional[str] = "Один этап"
+    short_description: Optional[str] = ""
     ultra_short_summary: Optional[str] = None
 
 class ContractUpdate(BaseModel):
@@ -116,6 +124,7 @@ class ContractUpdate(BaseModel):
     monthly_cost: Optional[float] = None
     work_address: Optional[str] = None
     elevator_addresses: Optional[str] = None
+    elevator_count: Optional[int] = None
     stages_info: Optional[str] = None
     short_description: Optional[str] = None
     ultra_short_summary: Optional[str] = None
@@ -123,78 +132,172 @@ class ContractUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
 
-async def process_single_file(file_path: str, filename: str, db: Session):
+async def process_single_file_stream(file_path: str, filename: str, db: Session):
     try:
+        yield {"log": f"📄 Обработка файла: {filename}", "status": "info"}
         file_hash = calculate_file_hash(file_path)
         existing = db.query(Contract).filter(Contract.file_hash == file_hash).first()
-        if existing: return {"filename": filename, "status": "duplicate_hash", "error": f"Уже загружен ({existing.unique_contract_number})"}
+        if existing:
+            yield {"log": f"🚫 Файл уже существует: {existing.unique_contract_number}", "status": "error"}
+            yield {"final_result": {"filename": filename, "status": "duplicate_hash", "error": f"Уже загружен ({existing.unique_contract_number})"}}
+            return
+
+        yield {"log": "📑 Извлечение текста (OCR)...", "status": "info"}
         text = extract_text(file_path)
-        if "Error: " in text: return {"filename": filename, "status": "failed text extraction", "error": text}
+        if "Error: " in text:
+            yield {"log": f"❌ Ошибка извлечения текста: {text}", "status": "error"}
+            yield {"final_result": {"filename": filename, "status": "failed text extraction", "error": text}}
+            return
+
+        yield {"log": "🤖 ИИ-анализ (DeepSeek)...", "status": "info"}
         ai_data = extract_contract_data(text)
+        
+        inn = ai_data.get("customer_inn")
+        if inn:
+            yield {"log": f"🏢 Найден ИНН: {inn}. Поиск в базе...", "status": "info"}
+            existing_customer = db.query(Customer).filter(Customer.inn == inn).first()
+            if existing_customer:
+                yield {"log": "✅ Заказчик найден в локальной базе. Подгружаем реквизиты.", "status": "success"}
+                ai_data.update({
+                    "customer": existing_customer.name, "customer_ogrn": existing_customer.ogrn,
+                    "customer_ceo": existing_customer.ceo_name, "customer_legal_address": existing_customer.legal_address,
+                    "customer_id": existing_customer.id, "customer_bank_details": existing_customer.bank_details,
+                    "customer_contacts": existing_customer.contact_info
+                })
+        
+        yield {"log": "📝 Генерация подробного резюме...", "status": "info"}
         ai_summary = summarize_contract(text)
-        return {"temp_path": file_path, "filename": filename, "file_hash": file_hash, "extracted_data": ai_data, "summary": ai_summary or "", "status": "analyzed"}
-    except Exception as e: return {"filename": filename, "status": "failed", "error": str(e)}
+        
+        yield {"log": "🎉 Анализ завершен!", "status": "success"}
+        yield {"final_result": {
+            "temp_path": file_path, "filename": filename, "file_hash": file_hash, 
+            "extracted_data": ai_data, "summary": ai_summary or "", "status": "analyzed"
+        }}
+    except Exception as e:
+        yield {"log": f"💥 Критическая ошибка: {str(e)}", "status": "error"}
+        yield {"final_result": {"filename": filename, "status": "failed", "error": str(e)}}
 
 @app.post("/analyze")
 async def analyze_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    path = os.path.join(TMP_UPLOAD_DIR, file.filename)
-    async with aiofiles.open(path, "wb") as out:
-        while content := await file.read(1024): await out.write(content)
-    if file.filename.lower().endswith(".zip"):
-        unpack_path = os.path.join(TMP_UPLOAD_DIR, f"upk_{datetime.now().strftime('%H%M%S')}")
-        os.makedirs(unpack_path, exist_ok=True)
-        try:
-            with zipfile.ZipFile(path, 'r') as z: z.extractall(unpack_path)
-            shutil.move(path, os.path.join(ARCHIVE_DIR, file.filename))
-            results = []
-            for root, _, files in os.walk(unpack_path):
-                for f in files:
-                    if f.lower().endswith(('.pdf', '.docx', '.doc', '.xlsx', '.xls')):
-                        results.append(await process_single_file(os.path.join(root, f), f, db))
-            return {"status": "batch_analyzed", "results": results}
-        except Exception as e: return JSONResponse(status_code=500, content={"error": str(e)})
-    else:
-        res = await process_single_file(path, file.filename, db)
-        return JSONResponse(status_code=400, content=res) if res.get("status") in ["failed", "duplicate_hash"] else res
+    async def event_generator():
+        path = os.path.join(TMP_UPLOAD_DIR, file.filename)
+        yield f"data: {json.dumps({'log': f'💾 Загрузка на сервер: {file.filename}', 'status': 'info'})}\n\n"
+        async with aiofiles.open(path, "wb") as out:
+            while content := await file.read(1024): await out.write(content)
+        
+        if file.filename.lower().endswith(".zip"):
+            yield f"data: {json.dumps({'log': '📦 Распаковка архива...', 'status': 'info'})}\n\n"
+            unpack_path = os.path.join(TMP_UPLOAD_DIR, f"upk_{datetime.now().strftime('%H%M%S')}")
+            os.makedirs(unpack_path, exist_ok=True)
+            try:
+                with zipfile.ZipFile(path, 'r') as z: z.extractall(unpack_path)
+                shutil.move(path, os.path.join(ARCHIVE_DIR, file.filename))
+                files_to_process = []
+                for root, _, files in os.walk(unpack_path):
+                    for f in files:
+                        if f.lower().endswith(('.pdf', '.docx', '.doc', '.xlsx', '.xls')):
+                            files_to_process.append(os.path.join(root, f))
+                
+                yield f"data: {json.dumps({'log': f'📂 Найдено {len(files_to_process)} файлов', 'status': 'info'})}\n\n"
+                for f_path in files_to_process:
+                    async for event in process_single_file_stream(f_path, os.path.basename(f_path), db):
+                        yield f"data: {json.dumps(event)}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'log': f'❌ Ошибка архива: {str(e)}', 'status': 'error'})}\n\n"
+        else:
+            async for event in process_single_file_stream(path, file.filename, db):
+                yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.post("/finalize")
 async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db)):
     if not os.path.exists(data.temp_path): raise HTTPException(status_code=404, detail="Файл не найден")
     try:
+        target_customer_id = None
+        if data.customer_inn:
+            cust = db.query(Customer).filter(Customer.inn == data.customer_inn).first()
+            if not cust:
+                cust = Customer(
+                    name=data.customer, inn=data.customer_inn, ogrn=data.customer_ogrn,
+                    ceo_name=data.customer_ceo, legal_address=data.customer_legal_address,
+                    contact_info=data.customer_contacts, bank_details=data.customer_bank_details
+                )
+                db.add(cust); db.flush()
+            else:
+                cust.name = data.customer or cust.name
+                cust.ogrn = data.customer_ogrn or cust.ogrn
+                cust.ceo_name = data.customer_ceo or cust.ceo_name
+                cust.legal_address = data.customer_legal_address or cust.legal_address
+            target_customer_id = cust.id
+
         conclusion_date = data.conclusion_date or date.today()
         unique_num = generate_unique_contract_number(db, data.doc_type, data.company, conclusion_date)
-        
         f_dir = os.path.join(FINAL_STORAGE_ROOT, sanitize_filename(data.company), sanitize_filename(data.customer), sanitize_filename(data.work_type), str(conclusion_date.year))
         os.makedirs(f_dir, exist_ok=True)
         f_path = os.path.join(f_dir, f"{unique_num}_{data.filename}")
         shutil.move(data.temp_path, f_path)
 
         new_contract = Contract(
-            unique_contract_number=unique_num, 
-            doc_type=data.doc_type, 
-            file_hash=data.file_hash,
-            company=data.company, 
-            customer=data.customer,
-            customer_id=data.customer_id,
-            work_type=data.work_type,
-            contract_cost=data.contract_cost, 
-            monthly_cost=data.monthly_cost,
-            work_address=data.work_address,
-            elevator_addresses=data.elevator_addresses,
-            conclusion_date=conclusion_date, 
-            start_date=data.start_date or conclusion_date, 
-            end_date=data.end_date or conclusion_date,
-            stages_info=data.stages_info, 
-            short_description=data.short_description,
-            ultra_short_summary=data.ultra_short_summary,
-            catalog_path=f_path, 
-            ai_analysis_status="Completed"
+            unique_contract_number=unique_num, doc_type=data.doc_type, file_hash=data.file_hash,
+            company=data.company, customer=data.customer, customer_id=target_customer_id,
+            work_type=data.work_type, contract_cost=data.contract_cost, monthly_cost=data.monthly_cost,
+            work_address=data.work_address, elevator_addresses=data.elevator_addresses,
+            elevator_count=data.elevator_count, # НОВОЕ ПОЛЕ
+            conclusion_date=conclusion_date, start_date=data.start_date or conclusion_date, 
+            end_date=data.end_date or conclusion_date, stages_info=data.stages_info, 
+            short_description=data.short_description, ultra_short_summary=data.ultra_short_summary,
+            catalog_path=f_path, ai_analysis_status="Завершен"
         )
         db.add(new_contract); db.commit(); db.refresh(new_contract)
         return {"status": "success", "contract_id": new_contract.id, "unique_number": unique_num}
     except Exception as e: 
         db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+class CustomerResponse(BaseModel):
+    id: int
+    name: str
+    inn: str
+    ogrn: Optional[str] = None
+    ceo_name: Optional[str] = None
+    legal_address: Optional[str] = None
+    contact_info: Optional[str] = None
+    bank_details: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class CustomerDetailResponse(CustomerResponse):
+    contracts: List[ContractResponse] = []
+
+@app.get("/customers", response_model=List[CustomerResponse])
+async def get_all_customers(db: Session = Depends(get_db)):
+    return db.query(Customer).order_by(Customer.name).all()
+
+@app.get("/customers/{cid}", response_model=CustomerDetailResponse)
+async def get_customer(cid: int, db: Session = Depends(get_db)):
+    cust = db.query(Customer).filter(Customer.id == cid).first()
+    if not cust: raise HTTPException(status_code=404, detail="Заказчик не найден")
+    return cust
+
+class CustomerUpdate(BaseModel):
+    name: Optional[str] = None
+    inn: Optional[str] = None
+    ogrn: Optional[str] = None
+    ceo_name: Optional[str] = None
+    legal_address: Optional[str] = None
+    contact_info: Optional[str] = None
+    bank_details: Optional[str] = None
+
+@app.put("/customers/{cid}", response_model=CustomerResponse)
+async def update_customer(cid: int, data: CustomerUpdate, db: Session = Depends(get_db)):
+    cust = db.query(Customer).filter(Customer.id == cid).first()
+    if not cust: raise HTTPException(status_code=404, detail="Заказчик не найден")
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items(): setattr(cust, key, value)
+    try:
+        db.commit(); db.refresh(cust); return cust
+    except Exception as e:
+        db.rollback(); return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/contracts", response_model=List[ContractResponse])
 async def get_all_contracts(db: Session = Depends(get_db)):
@@ -209,20 +312,13 @@ async def get_contract(cid: int, db: Session = Depends(get_db)):
 @app.put("/contracts/{cid}", response_model=ContractResponse)
 async def update_contract(cid: int, data: ContractUpdate, db: Session = Depends(get_db)):
     c = db.query(Contract).filter(Contract.id == cid).first()
-    if not c:
-        raise HTTPException(status_code=404, detail="Договор не найден")
-    
+    if not c: raise HTTPException(404)
     update_data = data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(c, key, value)
-    
+    for key, value in update_data.items(): setattr(c, key, value)
     try:
-        db.commit()
-        db.refresh(c)
-        return c
+        db.commit(); db.refresh(c); return c
     except Exception as e:
-        db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        db.rollback(); return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.delete("/contracts/{cid}")
 async def delete_contract(cid: int, db: Session = Depends(get_db)):
@@ -233,6 +329,16 @@ async def delete_contract(cid: int, db: Session = Depends(get_db)):
             except: pass
         db.delete(c); db.commit()
     return {"status": "success"}
+
+@app.post("/contracts/{cid}/open-folder")
+async def open_contract_folder(cid: int, db: Session = Depends(get_db)):
+    c = db.query(Contract).filter(Contract.id == cid).first()
+    if not c or not c.catalog_path: raise HTTPException(404)
+    abs_path = os.path.abspath(c.catalog_path)
+    if os.path.exists(abs_path):
+        subprocess.Popen(['explorer', '/select,', abs_path])
+        return {"status": "success"}
+    return JSONResponse(status_code=404, content={"error": "not_found"})
 
 @app.post("/reset-system")
 async def reset_system(db: Session = Depends(get_db)):
@@ -256,6 +362,5 @@ async def cancel_upload(data: dict):
     return {"status": "skipped"}
 
 import uvicorn
-
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

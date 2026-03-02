@@ -13,7 +13,7 @@ def _call_deepseek(prompt: str, json_mode: bool = False, system_msg: str = None)
         return None
 
     if system_msg is None:
-        system_msg = "You are a specialized legal assistant. Your primary mission is to find the INN and critical DATES (conclusion, start, end) in the contract text."
+        system_msg = "You are a specialized legal assistant. Your primary mission is to find the INN, critical DATES, and the EXACT NUMBER of elevators mentioned for maintenance or installation."
 
     headers = {
         "Content-Type": "application/json",
@@ -42,37 +42,39 @@ def _call_deepseek(prompt: str, json_mode: bool = False, system_msg: str = None)
         return None
 
 def get_smart_chunks(text: str) -> str:
-    """Извлечение фрагментов с фокусом на ИНН и ДАТЫ."""
+    """Извлечение фрагментов с фокусом на ИНН, ДАТЫ и КОЛИЧЕСТВО ЛИФТОВ."""
     if not text: return ""
     head = text[:35000]
     tail = text[-35000:] if len(text) > 35000 else ""
     
-    date_context = ""
-    date_keywords = [
+    # Контекст для дат и лифтов
+    context = ""
+    keywords = [
         r"\d{2}\.\d{2}\.20\d{2}", 
         r"январ", r"феврал", r"март", r"апрел", r"ма(?:я|й)", r"июн", 
         r"июл", r"август", r"сентябр", r"октябр", r"ноябр", r"декабр",
-        r"действует до", r"срок действия", r"в течение", r"календарных дней"
+        r"действует до", r"срок действия", r"количество лифтов", r"единиц",
+        r"\d+\s*шт", r"\d+\s*\(.*\)\s*лифт", r"перечень оборудования"
     ]
     
-    for pattern in date_keywords:
+    for pattern in keywords:
         for match in re.finditer(pattern, text, re.IGNORECASE):
-            start = max(0, match.start() - 800)
-            end = min(len(text), match.end() + 1200)
+            start = max(0, match.start() - 1000)
+            end = min(len(text), match.end() + 1500)
             chunk = text[start:end]
-            if not any(chunk[:50] in existing for existing in date_context.split("---")):
-                date_context += f"\n--- ФРАГМЕНТ С ДАТОЙ/СРОКОМ ---\n{chunk}\n"
-            if len(date_context) > 40000: break
+            if not any(chunk[:50] in existing for existing in context.split("---")):
+                context += f"\n--- ФРАГМЕНТ ДЛЯ АНАЛИЗА ---\n{chunk}\n"
+            if len(context) > 50000: break
             
-    inn_context = ""
     inn_matches = list(re.finditer(r'(?i)(ИНН|IНН|ИHH|77\d{8}|\d{10}|\d{12})', text))
+    inn_context = ""
     for match in inn_matches[:5]:
         start = max(0, match.start() - 500)
         end = min(len(text), match.end() + 500)
-        inn_context += f"\n--- ФРАГМЕНТ С ИНН ---\n{text[start:end]}\n"
+        inn_context += f"\n--- ИНН КОНТЕКСТ ---\n{text[start:end]}\n"
 
-    combined_text = f"--- НАЧАЛО ---\n{head}\n\n{date_context}\n\n{inn_context}\n\n--- КОНЕЦ ---\n{tail}"
-    return combined_text[:130000]
+    combined_text = f"--- НАЧАЛО ---\n{head}\n\n{context}\n\n{inn_context}\n\n--- КОНЕЦ ---\n{tail}"
+    return combined_text[:135000]
 
 def fetch_data_from_dadata(inn: str) -> Dict[str, Any]:
     if not settings.DADATA_API_KEY: return {}
@@ -94,37 +96,30 @@ def fetch_data_from_dadata(inn: str) -> Dict[str, Any]:
     return {}
 
 def calculate_monthly_cost_fallback(data: Dict[str, Any]) -> Optional[float]:
-    """Математический расчет ежемесячной стоимости на основе дат и общей суммы."""
     try:
         if not data.get("contract_cost") or not data.get("start_date") or not data.get("end_date"):
             return None
-        
-        # Только для договоров ТО (Техническое Обслуживание)
         if data.get("work_type") != "ТО":
             return None
-
         start = datetime.strptime(data["start_date"], "%Y-%m-%d").date()
         end = datetime.strptime(data["end_date"], "%Y-%m-%d").date()
-        
-        # Считаем количество месяцев (включая неполные как полные для ТО)
         months = (end.year - start.year) * 12 + (end.month - start.month) + 1
-        
         if months > 0:
-            calc_cost = float(data["contract_cost"]) / months
-            return round(calc_cost, 2)
-    except:
-        pass
+            return round(float(data["contract_cost"]) / months, 2)
+    except: pass
     return None
 
 def extract_contract_data(contract_text: str) -> Dict[str, Any]:
     smart_text = get_smart_chunks(contract_text)
     
     prompt = f"""
-    ### ЗАДАЧА: ИЗВЛЕЧЬ ИНН И ДАТЫ.
-    1. conclusion_date: Дата заключения (начало договора).
-    2. start_date: Дата начала работ.
-    3. end_date: Дата окончания работ или срок действия.
+    ### ЗАДАЧА: ИЗВЛЕЧЬ ИНН, ДАТЫ И КОЛИЧЕСТВО ЛИФТОВ.
     
+    ИНСТРУКЦИЯ ПО ЛИФТАМ:
+    Найди в тексте количество лифтов, которые принимаются на обслуживание или подлежат монтажу. 
+    Обычно это фразы: "количество лифтов: 5", "5 (пять) лифтов", "монтаж 2-х лифтов".
+    Если есть список адресов, посчитай количество уникальных адресов/лифтов.
+
     JSON FORMAT:
     - doc_type: (ДОГ | ДС | АКТ | КС-2 | КС-3)
     - company: (ТОР-ЛИФТ | Противовес | Противовес-Т | null)
@@ -137,9 +132,10 @@ def extract_contract_data(contract_text: str) -> Dict[str, Any]:
     - customer_bank_details: р/с, БИК, Банк
     - work_type: (ТО | МОНТАЖ | СТРОЙКА | ПРОЕКТИРОВАНИЕ | КАПИТАЛЬНЫЕ РАБОТЫ | null)
     - work_address: Адрес объекта
-    - elevator_addresses: Адреса лифтов
-    - contract_cost: Общая сумма (число)
-    - monthly_cost: Сумма в месяц (число)
+    - elevator_addresses: Список адресов лифтов (строго каждый с новой строки)
+    - elevator_count: ОБЩЕЕ КОЛИЧЕСТВО ЛИФТОВ (число)
+    - contract_cost: Сумма (число)
+    - monthly_cost: В месяц (число)
     - conclusion_date: YYYY-MM-DD
     - start_date: YYYY-MM-DD
     - end_date: YYYY-MM-DD
@@ -155,7 +151,6 @@ def extract_contract_data(contract_text: str) -> Dict[str, Any]:
         try:
             data = json.loads(response_text)
             
-            # Очистка ИНН и Dadata
             if data.get("customer_inn"):
                 inn = re.sub(r'\D', '', str(data["customer_inn"]))
                 if len(inn) in [10, 12]:
@@ -165,17 +160,19 @@ def extract_contract_data(contract_text: str) -> Dict[str, Any]:
                         if official.get(k): data[k] = official[k]
                 else: data["customer_inn"] = None
 
-            # Очистка стоимости от ИИ
             for field in ["contract_cost", "monthly_cost"]:
                 if data.get(field) and isinstance(data[field], str):
                     clean_val = re.sub(r'[^\d.]', '', data[field])
                     data[field] = float(clean_val) if clean_val else None
 
-            # МАТЕМАТИЧЕСКИЙ ПЕРЕРАСЧЕТ (СТРАХОВКА)
             if data.get("work_type") == "ТО" and not data.get("monthly_cost"):
                 calc_val = calculate_monthly_cost_fallback(data)
-                if calc_val:
-                    data["monthly_cost"] = calc_val
+                if calc_val: data["monthly_cost"] = calc_val
+
+            # Если ИИ не вернул число в count, попробуем посчитать по списку адресов
+            if not data.get("elevator_count") and data.get("elevator_addresses"):
+                addrs = [s for s in data["elevator_addresses"].split('\n') if s.strip()]
+                data["elevator_count"] = len(addrs)
 
             return data
         except: return {"error": "JSON error"}

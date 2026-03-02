@@ -40,6 +40,7 @@ class Contract(Base):
     
     work_address = Column(Text, nullable=True)
     elevator_addresses = Column(Text, nullable=True)
+    elevator_count = Column(Integer, nullable=True, default=0)
     
     stages_info = Column(Text, nullable=False, default='Один этап')
     short_description = Column(Text, nullable=False)

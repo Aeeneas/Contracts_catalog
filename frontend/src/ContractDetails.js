@@ -20,171 +20,139 @@ function ContractDetails() {
                 const dataContract = await resContract.json();
                 setContract(dataContract);
                 setEditData(dataContract);
-
                 if (dataContract.customer_id) {
                     const resCustomer = await fetch(`http://localhost:8000/customers/${dataContract.customer_id}`);
-                    if (resCustomer.ok) {
-                        const dataCustomer = await resCustomer.json();
-                        setCustomer(dataCustomer);
-                    }
+                    if (resCustomer.ok) setCustomer(await resCustomer.json());
                 }
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
+            } catch (err) { setError(err.message); } finally { setLoading(false); }
         };
         fetchData();
     }, [id]);
 
-    const handleEditToggle = () => {
-        setIsEditing(!isEditing);
-        if (!isEditing) setEditData(contract);
-    };
-
-    const handleFieldChange = (field, value) => {
-        setEditData(prev => ({ ...prev, [field]: value }));
-    };
-
     const handleSave = async () => {
         try {
-            const sanitizedData = { ...editData };
-            delete sanitizedData.id;
-            delete sanitizedData.upload_date;
-            delete sanitizedData.unique_contract_number;
-            delete sanitizedData.catalog_path;
-            delete sanitizedData.ai_analysis_status;
-            delete sanitizedData.customer_id;
-
             const response = await fetch(`http://localhost:8000/contracts/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(sanitizedData),
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editData),
             });
+            if (response.ok) { 
+                const updated = await response.json();
+                setContract(updated); 
+                setIsEditing(false); 
+                alert('Данные договора успешно обновлены'); 
+            }
+        } catch (err) { alert(err.message); }
+    };
 
-            if (!response.ok) throw new Error('Ошибка сохранения');
-            const updated = await response.json();
-            setContract(updated);
-            setIsEditing(false);
-            alert('Сохранено!');
-        } catch (err) {
-            alert(err.message);
-        }
+    const handleOpenFolder = async () => {
+        try { await fetch(`http://localhost:8000/contracts/${id}/open-folder`, { method: 'POST' }); } catch (err) { alert('Ошибка'); }
     };
 
     const handleDelete = async () => {
         if (!window.confirm('Удалить этот договор?')) return;
-        try {
-            const res = await fetch(`http://localhost:8000/contracts/${id}`, { method: 'DELETE' });
-            if (res.ok) { alert('Удалено'); navigate('/'); }
-        } catch (err) { alert(err.message); }
+        try { const res = await fetch(`http://localhost:8000/contracts/${id}`, { method: 'DELETE' }); if (res.ok) navigate('/'); } catch (err) { alert(err.message); }
     };
 
-    if (loading) return <p className="details-loading">Загрузка...</p>;
-    if (error) return <p className="details-error">{error}</p>;
-    if (!contract) return <p className="details-not-found">Не найдено.</p>;
+    const getStatusInfo = (endDateStr) => {
+        if (!endDateStr) return { label: 'Неопределено', class: 'status-undefined' };
+        const today = new Date(); today.setHours(0,0,0,0);
+        const endDate = new Date(endDateStr);
+        if (isNaN(endDate.getTime())) return { label: 'Неопределено', class: 'status-undefined' };
+        return today <= endDate ? { label: 'Действует', class: 'status-active' } : { label: 'Завершен', class: 'status-ended' };
+    };
+
+    if (loading) return <div className="p-10 center-text">Загрузка...</div>;
+    if (error) return <div className="p-10 text-red-500 center-text">{error}</div>;
+
+    const elevatorList = contract.elevator_addresses ? contract.elevator_addresses.split(/[;\n]/).map(s => s.trim()).filter(s => s.length > 0) : [];
+    const status = getStatusInfo(contract.end_date);
 
     return (
-        <div className="contract-details-container">
-            {/* Шапка с кнопками */}
-            <div className="details-header">
-                <button onClick={() => navigate('/')} className="back-button">&larr; Назад к списку</button>
-                <div className="header-buttons">
+        <div className="page-container">
+            <header className="home-header">
+                <div className="header-left">
+                    <button onClick={() => navigate('/')} style={{background: 'none', color: '#3498db', padding: 0, marginBottom: '10px', fontWeight: 'bold'}}>← Назад</button>
+                    <h1 style={{fontWeight: '900', textTransform: 'uppercase'}}>{contract.work_type} — {contract.customer}</h1>
+                    <p className="subtitle" style={{fontWeight: 'bold', fontSize: '1.2rem'}}>{contract.doc_type} № {contract.unique_contract_number}</p>
+                </div>
+                <div className="header-right" style={{gap: '10px'}}>
+                    <button onClick={handleOpenFolder} className="open-folder-btn" style={{padding: '10px 20px'}}>📂 Папка</button>
                     {!isEditing ? (
-                        <><button onClick={handleEditToggle} className="edit-btn">✏️ Редактировать</button><button onClick={handleDelete} className="delete-btn">🗑️ Удалить</button></>
+                        <><button onClick={() => setIsEditing(true)} className="confirm-btn" style={{backgroundColor: '#3498db', padding: '10px 20px'}}>✏️ Редактировать</button>
+                        <button onClick={handleDelete} className="delete-btn" style={{padding: '10px 20px'}}>🗑️ Удалить</button></>
                     ) : (
-                        <><button onClick={handleSave} className="save-btn">💾 Сохранить</button><button onClick={handleEditToggle} className="cancel-btn-small">Отмена</button></>
+                        <><button onClick={handleSave} className="confirm-btn" style={{padding: '10px 20px'}}>💾 Сохранить</button>
+                        <button onClick={() => setIsEditing(false)} style={{background: 'none', color: '#666', fontWeight: 'bold'}}>Отмена</button></>
                     )}
                 </div>
+            </header>
+
+            <div className="card" style={{borderTop: '4px solid #2c3e50', marginBottom: '20px'}}>
+                <div className="form-grid" style={{gridTemplateColumns: 'repeat(6, 1fr)'}}>
+                    <div><strong>Исполнитель</strong> <p style={{fontWeight: 'bold'}}>{contract.company}</p></div>
+                    <div><strong>Статус</strong> <p><span className={`status-badge ${status.class}`}>{status.label}</span></p></div>
+                    <div><strong>Сумма</strong> <p style={{fontWeight: 'bold'}}>{contract.contract_cost.toLocaleString()} ₽</p></div>
+                    {contract.work_type === 'ТО' && <div><strong>В месяц</strong> <p style={{color: '#27ae60', fontWeight: 'bold'}}>{contract.monthly_cost?.toLocaleString()} ₽</p></div>}
+                    <div><strong>Лифтов</strong> <p style={{fontWeight: 'bold'}}>{contract.elevator_count || elevatorList.length}</p></div>
+                    <div><strong>Дата закл.</strong> <p>{contract.conclusion_date}</p></div>
+                </div>
             </div>
 
-            {/* ОСНОВНОЙ БЛОК: ТИП, ИСПОЛНИТЕЛЬ, СУММА */}
-            <div className="highlights-bar">
-                <div className="highlight-item">
-                    <label>Тип документа</label>
-                    {isEditing ? (
-                        <select value={editData.doc_type} onChange={e => handleFieldChange('doc_type', e.target.value)}>
-                            <option value="ДОГ">Договор</option><option value="ДС">Доп. соглашение</option><option value="АКТ">Акт</option><option value="КС-2">КС-2</option><option value="КС-3">КС-3</option>
-                        </select>
-                    ) : <strong>{contract.doc_type}</strong>}
-                </div>
-                <div className="highlight-item">
-                    <label>Вид работ</label>
-                    {isEditing ? (
-                        <select value={editData.work_type} onChange={e => handleFieldChange('work_type', e.target.value)}>
-                            <option value="ТО">ТО</option><option value="МОНТАЖ">МОНТАЖ</option><option value="СТРОЙКА">СТРОЙКА</option><option value="ПРОЕКТИРОВАНИЕ">ПРОЕКТИРОВАНИЕ</option><option value="КАПИТАЛЬНЫЕ РАБОТЫ">КАПИТАЛЬНЫЕ РАБОТЫ</option>
-                        </select>
-                    ) : <strong>{contract.work_type}</strong>}
-                </div>
-                <div className="highlight-item">
-                    <label>Компания исполнитель</label>
-                    <strong>{contract.company}</strong>
-                </div>
-                <div className="highlight-item">
-                    <label>Общая сумма контракта</label>
-                    {isEditing ? (
-                        <input type="number" value={editData.contract_cost} onChange={e => handleFieldChange('contract_cost', parseFloat(e.target.value))} />
-                    ) : <strong className="price-tag">{contract.contract_cost.toLocaleString()} ₽</strong>}
-                </div>
-                {contract.work_type === 'ТО' && (
-                    <div className="highlight-item">
-                        <label>В месяц</label>
-                        <strong>{contract.monthly_cost?.toLocaleString()} ₽</strong>
+            <div className="form-grid" style={{alignItems: 'start'}}>
+                <div className="card" style={{gridColumn: 'span 2'}}>
+                    <h3 className="form-group-title" style={{fontWeight: 'bold'}}>СРОКИ ДЕЙСТВИЯ</h3>
+                    <div className="form-grid" style={{gridTemplateColumns: '1fr 1fr', marginBottom: '20px'}}>
+                        <label><strong>Дата начала</strong><input type="date" disabled={!isEditing} value={isEditing ? editData.start_date : contract.start_date} onChange={e => setEditData({...editData, start_date: e.target.value})}/></label>
+                        <label><strong>Дата окончания</strong><input type="date" disabled={!isEditing} value={isEditing ? editData.end_date : contract.end_date} onChange={e => setEditData({...editData, end_date: e.target.value})}/></label>
                     </div>
-                )}
-            </div>
 
-            <h2 className="contract-number-title">
-                {contract.doc_type} № {contract.unique_contract_number} — {contract.work_type}
-            </h2>
-            
-            <div className="content-layout">
-                {/* Секция: Информация о работах */}
-                <div className="details-section">
-                    <h3 className="section-title">🛠️ Сведения о работах и сроки</h3>
-                    <div className="details-grid-compact">
-                        <div className="detail-item-inline"><strong>Вид работ:</strong> <span>{contract.work_type}</span></div>
-                        <div className="detail-item-inline"><strong>Дата заключения:</strong> <span>{new Date(contract.conclusion_date).toLocaleDateString()}</span></div>
-                        <div className="detail-item-inline"><strong>Срок выполнения с:</strong> <span>{new Date(contract.start_date).toLocaleDateString()}</span></div>
-                        <div className="detail-item-inline"><strong>Срок выполнения по:</strong> <span>{new Date(contract.end_date).toLocaleDateString()}</span></div>
-                        
-                        <div className="detail-item-block"><strong>Объект (адрес работ):</strong> 
-                            {isEditing ? <input type="text" value={editData.work_address || ''} onChange={e => handleFieldChange('work_address', e.target.value)} /> : <span>{contract.work_address || 'Адрес не указан'}</span>}
-                        </div>
-                        <div className="detail-item-block"><strong>Адреса лифтов на обслуживании:</strong> 
-                            {isEditing ? <input type="text" value={editData.elevator_addresses || ''} onChange={e => handleFieldChange('elevator_addresses', e.target.value)} /> : <span className="small-text">{contract.elevator_addresses || 'Информация отсутствует'}</span>}
-                        </div>
-                        <div className="detail-item-block"><strong>Краткое содержание:</strong> 
-                            {isEditing ? <textarea value={editData.short_description} onChange={e => handleFieldChange('short_description', e.target.value)} rows="4" /> : <p className="summary-text">{contract.short_description}</p>}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Секция: Данные заказчика */}
-                <div className="details-section">
-                    <h3 className="section-title">🏢 Реквизиты заказчика</h3>
-                    <div className="details-grid-compact">
-                        <div className="detail-item-inline"><strong>Наименование:</strong> <span>{contract.customer}</span></div>
-                        {customer ? (
-                            <>
-                                <div className="detail-item-inline"><strong>ИНН:</strong> <span>{customer.inn}</span></div>
-                                <div className="detail-item-inline"><strong>ОГРН:</strong> <span>{customer.ogrn || '—'}</span></div>
-                                <div className="detail-item-inline"><strong>Руководитель:</strong> <span>{customer.ceo_name || '—'}</span></div>
-                                <div className="detail-item-block"><strong>Юридический адрес:</strong> <span>{customer.legal_address || '—'}</span></div>
-                                <div className="detail-item-block"><strong>Контакты (тел/email):</strong> <span>{customer.contact_info || '—'}</span></div>
-                                <div className="detail-item-block"><strong>Банковские реквизиты:</strong> <pre className="pre-wrap-small">{customer.bank_details || '—'}</pre></div>
-                            </>
+                    <div style={{marginTop: '25px', padding: '15px', background: '#fcfcfc', borderLeft: '4px solid #f39c12', borderRadius: '4px'}}>
+                        <strong style={{fontSize: '0.85rem', color: '#7f8c8d', textTransform: 'uppercase'}}>Краткая сводка:</strong>
+                        {isEditing ? (
+                            <input style={{marginTop: '10px', width: '100%', padding: '8px'}} value={editData.ultra_short_summary || ''} onChange={e => setEditData({...editData, ultra_short_summary: e.target.value})}/>
                         ) : (
-                            <p className="no-data-hint">Реквизиты по ИНН не найдены.</p>
+                            <p style={{marginTop: '5px', fontSize: '1.1rem', fontWeight: '600', color: '#2c3e50'}}>{contract.ultra_short_summary || 'Нет краткого описания'}</p>
                         )}
                     </div>
-                    
-                    {!isEditing && (
-                        <div className="system-info">
-                            <p><strong>Путь к файлу:</strong> {contract.catalog_path}</p>
-                            <p><strong>Дата загрузки в систему:</strong> {new Date(contract.upload_date).toLocaleString()}</p>
+
+                    <h3 className="form-group-title" style={{fontWeight: 'bold', marginTop: '35px'}}>ИНФОРМАЦИЯ ОБ ОБЪЕКТЕ</h3>
+                    <div className="form-grid" style={{gridTemplateColumns: '1fr'}}>
+                        <label><strong>Адрес объекта</strong><input disabled={!isEditing} className="wide-input" value={isEditing ? editData.work_address : (contract.work_address || '')} onChange={e => setEditData({...editData, work_address: e.target.value})}/></label>
+                        <div style={{marginTop: '15px'}}>
+                            <strong>Список лифтов</strong>
+                            {isEditing ? (
+                                <textarea style={{marginTop: '10px', width: '100%'}} rows="5" value={editData.elevator_addresses || ''} onChange={e => setEditData({...editData, elevator_addresses: e.target.value})}/>
+                            ) : (
+                                <div className="elevator-list-box" style={{marginTop: '10px', maxHeight: '200px', overflowY: 'auto', background: '#f8f9fa', padding: '15px', borderRadius: '4px'}}>
+                                    {elevatorList.length > 0 ? (
+                                        <ul style={{listStyle: 'none', padding: 0, margin: 0}}>
+                                            {elevatorList.map((addr, idx) => <li key={idx} style={{padding: '5px 0', borderBottom: '1px solid #eee'}}>{idx+1}. {addr}</li>)}
+                                        </ul>
+                                    ) : <p style={{color: '#999'}}>Нет данных</p>}
+                                </div>
+                            )}
                         </div>
-                    )}
+                    </div>
+                </div>
+
+                <div className="card" style={{gridColumn: 'span 1'}}>
+                    <h3 className="form-group-title">ЗАКАЗЧИК</h3>
+                    <p style={{fontWeight: 'bold', fontSize: '1.1rem'}}>{contract.customer}</p>
+                    <div style={{marginTop: '10px', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                        <div><strong>ИНН:</strong> {customer?.inn}</div>
+                        <div><strong>ОГРН:</strong> {customer?.ogrn}</div>
+                        <div><strong>Директор:</strong> {customer?.ceo_name}</div>
+                    </div>
+                    <button onClick={() => navigate(`/customer/${contract.customer_id}`)} style={{marginTop: '20px', background: '#f8f9fa', color: '#3498db', width: '100%', border: '1px solid #ddd'}}>Карточка компании</button>
+                    
+                    <h3 className="form-group-title" style={{marginTop: '30px'}}>ПОДРОБНОЕ РЕЗЮМЕ</h3>
+                    <textarea 
+                        disabled={!isEditing} 
+                        rows="15" 
+                        style={{minHeight: '350px', width: '100%', marginTop: '10px', fontSize: '0.9rem', lineHeight: '1.5', border: 'none', background: isEditing ? '#fff' : '#fcfcfc'}}
+                        value={isEditing ? editData.short_description : contract.short_description} 
+                        onChange={e => setEditData({...editData, short_description: e.target.value})}
+                    />
                 </div>
             </div>
         </div>
