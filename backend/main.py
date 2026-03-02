@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 from typing import List, Optional
 from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
+
+# Улучшенные импорты (без относительных путей)
 try:
     from database import get_db, Contract
     from config import settings
@@ -15,12 +17,15 @@ try:
     from ai_service import extract_contract_data, summarize_contract
     from contract_utils import generate_unique_contract_number
 except ImportError:
-    from .database import get_db, Contract
-    from .config import settings
-    from .text_extractor import extract_text
-    from .ai_service import extract_contract_data, summarize_contract
-    from .contract_utils import generate_unique_contract_number
-from pydantic import BaseModel, ValidationError
+    import sys
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from database import get_db, Contract
+    from config import settings
+    from text_extractor import extract_text
+    from ai_service import extract_contract_data, summarize_contract
+    from contract_utils import generate_unique_contract_number
+
+from pydantic import BaseModel, ValidationError, ConfigDict
 import json
 import re
 from starlette.middleware.cors import CORSMiddleware
@@ -54,7 +59,7 @@ app = FastAPI()
 async def validation_exception_handler(request, exc):
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
-origins = ["http://localhost", "http://localhost:3000"]
+origins = ["*"]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 class ContractResponse(BaseModel):
@@ -65,17 +70,21 @@ class ContractResponse(BaseModel):
     file_hash: Optional[str] = None
     company: str
     customer: str
+    customer_id: Optional[int] = None
     work_type: str
     contract_cost: float
     monthly_cost: Optional[float] = None
+    work_address: Optional[str] = None
+    elevator_addresses: Optional[str] = None
     stages_info: str
     short_description: str
+    ultra_short_summary: Optional[str] = None
     conclusion_date: date
     start_date: date
     end_date: date
     catalog_path: str
     ai_analysis_status: str
-    class Config: from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class FinalizeContract(BaseModel):
     temp_path: str
@@ -84,14 +93,35 @@ class FinalizeContract(BaseModel):
     doc_type: str = "ДОГ"
     company: str
     customer: str
+    customer_id: Optional[int] = None
     work_type: str
     contract_cost: float = 0.0
     monthly_cost: Optional[float] = None
+    work_address: Optional[str] = None
+    elevator_addresses: Optional[str] = None
     conclusion_date: Optional[date] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     stages_info: str = "Один этап"
     short_description: str = ""
+    ultra_short_summary: Optional[str] = None
+
+class ContractUpdate(BaseModel):
+    doc_type: Optional[str] = None
+    company: Optional[str] = None
+    customer: Optional[str] = None
+    customer_id: Optional[int] = None
+    work_type: Optional[str] = None
+    contract_cost: Optional[float] = None
+    monthly_cost: Optional[float] = None
+    work_address: Optional[str] = None
+    elevator_addresses: Optional[str] = None
+    stages_info: Optional[str] = None
+    short_description: Optional[str] = None
+    ultra_short_summary: Optional[str] = None
+    conclusion_date: Optional[date] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
 async def process_single_file(file_path: str, filename: str, db: Session):
     try:
@@ -132,7 +162,6 @@ async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db))
     if not os.path.exists(data.temp_path): raise HTTPException(status_code=404, detail="Файл не найден")
     try:
         conclusion_date = data.conclusion_date or date.today()
-        # Использование новой логики номеров с базой данных
         unique_num = generate_unique_contract_number(db, data.doc_type, data.company, conclusion_date)
         
         f_dir = os.path.join(FINAL_STORAGE_ROOT, sanitize_filename(data.company), sanitize_filename(data.customer), sanitize_filename(data.work_type), str(conclusion_date.year))
@@ -141,16 +170,31 @@ async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db))
         shutil.move(data.temp_path, f_path)
 
         new_contract = Contract(
-            unique_contract_number=unique_num, doc_type=data.doc_type, file_hash=data.file_hash,
-            company=data.company, customer=data.customer, work_type=data.work_type,
-            contract_cost=data.contract_cost, monthly_cost=data.monthly_cost,
-            conclusion_date=conclusion_date, start_date=data.start_date or conclusion_date, end_date=data.end_date or conclusion_date,
-            stages_info=data.stages_info, short_description=data.short_description,
-            catalog_path=f_path, ai_analysis_status="Completed"
+            unique_contract_number=unique_num, 
+            doc_type=data.doc_type, 
+            file_hash=data.file_hash,
+            company=data.company, 
+            customer=data.customer,
+            customer_id=data.customer_id,
+            work_type=data.work_type,
+            contract_cost=data.contract_cost, 
+            monthly_cost=data.monthly_cost,
+            work_address=data.work_address,
+            elevator_addresses=data.elevator_addresses,
+            conclusion_date=conclusion_date, 
+            start_date=data.start_date or conclusion_date, 
+            end_date=data.end_date or conclusion_date,
+            stages_info=data.stages_info, 
+            short_description=data.short_description,
+            ultra_short_summary=data.ultra_short_summary,
+            catalog_path=f_path, 
+            ai_analysis_status="Completed"
         )
         db.add(new_contract); db.commit(); db.refresh(new_contract)
         return {"status": "success", "contract_id": new_contract.id, "unique_number": unique_num}
-    except Exception as e: return JSONResponse(status_code=500, content={"error": str(e)})
+    except Exception as e: 
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/contracts", response_model=List[ContractResponse])
 async def get_all_contracts(db: Session = Depends(get_db)):
@@ -161,6 +205,24 @@ async def get_contract(cid: int, db: Session = Depends(get_db)):
     c = db.query(Contract).filter(Contract.id == cid).first()
     if not c: raise HTTPException(404)
     return c
+
+@app.put("/contracts/{cid}", response_model=ContractResponse)
+async def update_contract(cid: int, data: ContractUpdate, db: Session = Depends(get_db)):
+    c = db.query(Contract).filter(Contract.id == cid).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Договор не найден")
+    
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(c, key, value)
+    
+    try:
+        db.commit()
+        db.refresh(c)
+        return c
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.delete("/contracts/{cid}")
 async def delete_contract(cid: int, db: Session = Depends(get_db)):
@@ -192,3 +254,8 @@ async def cancel_upload(data: dict):
     path = data.get("temp_path")
     if path and os.path.exists(path): os.remove(path); return {"status": "success"}
     return {"status": "skipped"}
+
+import uvicorn
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
