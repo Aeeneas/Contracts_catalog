@@ -8,5 +8,7 @@ class Settings:
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
     DADATA_API_KEY: str = os.getenv("DADATA_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    HTTP_PROXY: str = os.getenv("HTTP_PROXY", "")
+    HTTPS_PROXY: str = os.getenv("HTTPS_PROXY", "")
 
 settings = Settings()

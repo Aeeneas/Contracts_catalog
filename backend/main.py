@@ -77,7 +77,8 @@ async def process_single_file_stream(file_path: str, filename: str, db: Session)
                 ai_data.update({
                     "customer": cust.name, "customer_ogrn": cust.ogrn,
                     "customer_ceo": cust.ceo_name, "customer_legal_address": cust.legal_address,
-                    "customer_id": cust.id, "customer_bank_details": cust.bank_details
+                    "customer_id": cust.id, "customer_bank_details": cust.bank_details,
+                    "customer_contact_info": cust.contact_info
                 })
             elif settings.DADATA_API_KEY:
                 yield {"log": f"🌐 Данных в базе нет. Выполнен запрос в DaData для ИНН {inn}", "status": "info"}
@@ -85,10 +86,29 @@ async def process_single_file_stream(file_path: str, filename: str, db: Session)
         yield {"log": "📝 Генерация резюме...", "status": "info"}
         summary = summarize_contract(text)
         
+        # --- ЛОГИКА АВТО-СВЯЗЫВАНИЯ (Поиск потенциального родителя) ---
+        potential_parent = None
+        if ai_data.get("doc_type") != "ДОГ" and inn:
+            cust = db.query(Customer).filter(Customer.inn == inn).first()
+            if cust:
+                # Ищем последний договор или ДС для этого заказчика
+                last_contract = db.query(Contract).filter(
+                    Contract.customer_id == cust.id, 
+                    Contract.doc_type == "ДОГ"
+                ).order_by(Contract.conclusion_date.desc()).first()
+                if last_contract:
+                    potential_parent = {
+                        "id": last_contract.id, 
+                        "number": last_contract.unique_contract_number,
+                        "date": last_contract.conclusion_date.isoformat()
+                    }
+                    yield {"log": f"🔗 Найден подходящий договор для связи: {last_contract.unique_contract_number}", "status": "success"}
+
         yield {"log": "🎉 Анализ успешно завершен", "status": "success"}
         yield {"final_result": {
             "temp_path": file_path, "filename": filename, "file_hash": file_hash, 
-            "extracted_data": ai_data, "summary": summary or "", "status": "analyzed"
+            "extracted_data": ai_data, "summary": summary or "", "status": "analyzed",
+            "potential_parent": potential_parent
         }}
     except Exception as e:
         yield {"log": f"❌ Ошибка: {str(e)}", "status": "error"}
@@ -132,17 +152,25 @@ async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db))
         if data.customer_inn:
             cust = db.query(Customer).filter(Customer.inn == data.customer_inn).first()
             if not cust:
+                # Создаем нового заказчика с полным набором реквизитов
                 cust = Customer(
-                    name=data.customer, inn=data.customer_inn, ogrn=data.customer_ogrn,
-                    ceo_name=data.customer_ceo, legal_address=data.customer_legal_address,
-                    bank_details=data.customer_bank_details
+                    name=data.customer, 
+                    inn=data.customer_inn, 
+                    ogrn=data.customer_ogrn,
+                    ceo_name=data.customer_ceo, 
+                    legal_address=data.customer_legal_address,
+                    bank_details=data.customer_bank_details,
+                    contact_info=data.customer_contact_info
                 )
                 db.add(cust); db.flush()
             else:
+                # Обновляем существующего заказчика новыми данными, если они пришли
                 cust.name = data.customer or cust.name
                 cust.ogrn = data.customer_ogrn or cust.ogrn
                 cust.ceo_name = data.customer_ceo or cust.ceo_name
                 cust.legal_address = data.customer_legal_address or cust.legal_address
+                cust.bank_details = data.customer_bank_details or cust.bank_details
+                cust.contact_info = data.customer_contact_info or cust.contact_info
             cust_id = cust.id
 
         # Сохранение файла
@@ -162,7 +190,8 @@ async def finalize_upload(data: FinalizeContract, db: Session = Depends(get_db))
             elevator_count=data.elevator_count, conclusion_date=c_date,
             start_date=data.start_date or c_date, end_date=data.end_date or c_date,
             stages_info=data.stages_info, short_description=data.short_description,
-            ultra_short_summary=data.ultra_short_summary, catalog_path=f_path, ai_analysis_status="Завершен"
+            ultra_short_summary=data.ultra_short_summary, catalog_path=f_path, 
+            ai_analysis_status="Завершен", parent_id=data.parent_id
         )
         db.add(new_c); db.commit(); db.refresh(new_c)
         return {"status": "success", "id": new_c.id}

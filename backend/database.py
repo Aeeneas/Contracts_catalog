@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, Column, Integer, String, Numeric, Date, DateTime, Text, ForeignKey
-from sqlalchemy.orm import sessionmaker, declarative_base, relationship
+from sqlalchemy.orm import sessionmaker, declarative_base, relationship, backref
 from datetime import datetime
 from config import settings
 
@@ -52,7 +52,10 @@ class Contract(Base):
     upload_date = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     ai_analysis_status = Column(String(50), nullable=False, default='В ожидании')
 
+    parent_id = Column(Integer, ForeignKey("contracts.id"), nullable=True)
+
     customer_rel = relationship("Customer", back_populates="contracts")
+    children = relationship("Contract", backref=backref('parent', remote_side=[id]))
 
     def __repr__(self):
         return f"<Contract(id={self.id}, number='{self.unique_contract_number}', customer='{self.customer}')>"

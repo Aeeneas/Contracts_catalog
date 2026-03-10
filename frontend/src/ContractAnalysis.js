@@ -11,7 +11,6 @@ function ContractAnalysis() {
   const [progress, setProgress] = useState(0);
   const fileInputRef = useRef(null);
   const consoleRef = useRef(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (consoleRef.current) {
@@ -150,7 +149,13 @@ function ContractAnalysis() {
 
       {!isAnalyzing && !analysisResults.length && (
         <div className="centered-drop-container">
-          <div className="drop-zone" onClick={() => fileInputRef.current.click()}>
+          <div 
+            className="drop-zone" 
+            onClick={() => fileInputRef.current.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             <p style={{fontSize: '1.2rem', fontWeight: 'bold'}}>Перетащите файлы сюда или нажмите для выбора</p>
             <button className="drop-btn-action" style={{marginTop: '15px'}}>Выбрать файлы</button>
             <input type="file" multiple hidden ref={fileInputRef} onChange={handleFileChange} />
@@ -207,6 +212,7 @@ function ContractAnalysis() {
                 <label><strong>ОГРН</strong><input type="text" value={result.data.customer_ogrn} onChange={e => handleFieldChange(result.id, 'customer_ogrn', e.target.value)} /></label>
                 <label><strong>Директор</strong><input type="text" value={result.data.customer_ceo} onChange={e => handleFieldChange(result.id, 'customer_ceo', e.target.value)} /></label>
                 <label className="full-width"><strong>Юридический адрес</strong><input type="text" value={result.data.customer_legal_address} onChange={e => handleFieldChange(result.id, 'customer_legal_address', e.target.value)} /></label>
+                <label className="full-width"><strong>Контакты</strong><input type="text" value={result.data.customer_contact_info} onChange={e => handleFieldChange(result.id, 'customer_contact_info', e.target.value)} /></label>
                 <label className="full-width"><strong>Реквизиты</strong><textarea value={result.data.customer_bank_details} onChange={e => handleFieldChange(result.id, 'customer_bank_details', e.target.value)} rows="2" /></label>
 
                 <div className="form-group-title full-width">Сроки и стоимость</div>
@@ -223,6 +229,36 @@ function ContractAnalysis() {
 
                 <div className="form-group-title full-width">Резюме</div>
                 <label className="full-width"><strong>Сводка</strong><input type="text" value={result.data.ultra_short_summary} onChange={e => handleFieldChange(result.id, 'ultra_short_summary', e.target.value)} /></label>
+                
+                {result.data.doc_type !== 'ДОГ' && (
+                  <div className="parent-link-box full-width" style={{backgroundColor: '#f1f2f6', padding: '15px', borderRadius: '8px', border: '1px dashed #7f8c8d', marginTop: '10px'}}>
+                    <strong>🔗 Связь с договором:</strong>
+                    {result.potential_parent ? (
+                      <div style={{marginTop: '5px'}}>
+                        <span style={{color: '#27ae60'}}>Автоматически найден: </span> 
+                        <b>{result.potential_parent.number}</b> от {new Date(result.potential_parent.date).toLocaleDateString()}
+                        <button 
+                          onClick={() => handleFieldChange(result.id, 'parent_id', result.data.parent_id ? null : result.potential_parent.id)}
+                          style={{marginLeft: '15px', fontSize: '0.8rem', padding: '2px 8px'}}
+                        >
+                          {result.data.parent_id ? 'Отменить связь' : 'Привязать'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{marginTop: '5px'}}>
+                        <span style={{color: '#7f8c8d'}}>Договор не найден. Укажите ID вручную (если нужно): </span>
+                        <input 
+                          type="number" 
+                          placeholder="ID договора" 
+                          style={{width: '100px', marginLeft: '10px'}} 
+                          value={result.data.parent_id || ''} 
+                          onChange={e => handleFieldChange(result.id, 'parent_id', parseInt(e.target.value))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <label className="full-width"><strong>Полное описание</strong><textarea value={result.data.short_description} onChange={e => handleFieldChange(result.id, 'short_description', e.target.value)} rows="12" style={{minHeight: '200px'}} /></label>
             </div>
             <div className="card-actions">

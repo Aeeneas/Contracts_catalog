@@ -3,17 +3,26 @@ from sqlalchemy import text
 
 def update():
     print("Обновление базы данных...")
-    try:
-        with engine.connect() as conn:
-            # Пытаемся добавить колонку elevator_count
-            conn.execute(text("ALTER TABLE contracts ADD COLUMN elevator_count INTEGER DEFAULT 0"))
-            conn.commit()
-            print("Колонка elevator_count успешно добавлена.")
-    except Exception as e:
-        if "duplicate column name" in str(e).lower() or "already exists" in str(e).lower():
-            print("Колонка уже существует, обновление не требуется.")
-        else:
-            print(f"Ошибка при обновлении: {e}")
+    columns_to_add = [
+        ("elevator_count", "INTEGER DEFAULT 0"),
+        ("ultra_short_summary", "VARCHAR(255)"),
+        ("ai_analysis_status", "VARCHAR(50) DEFAULT 'В ожидании'"),
+        ("parent_id", "INTEGER REFERENCES contracts(id)"),
+        ("customer_id", "INTEGER REFERENCES customers(id)")
+    ]
+    
+    for col_name, col_type in columns_to_add:
+        try:
+            with engine.begin() as conn: # engine.begin() starts a transaction and commits at the end
+                conn.execute(text(f"ALTER TABLE contracts ADD COLUMN {col_name} {col_type}"))
+                print(f"Колонка {col_name} успешно добавлена.")
+        except Exception as e:
+            if "already exists" in str(e).lower() or "существует" in str(e).lower():
+                print(f"Колонка {col_name} уже существует.")
+            else:
+                print(f"Ошибка при добавлении {col_name}: {e}")
+                
+    print("Обновление завершено.")
 
 if __name__ == "__main__":
     update()

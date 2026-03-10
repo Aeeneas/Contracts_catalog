@@ -19,6 +19,7 @@ class ContractBase(BaseModel):
     stages_info: Optional[str] = "Один этап"
     short_description: Optional[str] = ""
     ultra_short_summary: Optional[str] = None
+    parent_id: Optional[int] = None
 
 class ContractResponse(ContractBase):
     id: int
@@ -37,7 +38,7 @@ class FinalizeContract(ContractBase):
     customer_ogrn: Optional[str] = None
     customer_ceo: Optional[str] = None
     customer_legal_address: Optional[str] = None
-    customer_contacts: Optional[str] = None
+    customer_contact_info: Optional[str] = None
     customer_bank_details: Optional[str] = None
 
 class ContractUpdate(BaseModel):
@@ -57,6 +58,7 @@ class ContractUpdate(BaseModel):
     conclusion_date: Optional[date] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    parent_id: Optional[int] = None
 
 class CustomerBase(BaseModel):
     name: str

@@ -12,57 +12,88 @@ try:
 except ImportError:
     from .config import settings
 
+from ai_service import _get_session
+
 def extract_text_from_pdf(pdf_path: str) -> str:
-    """Extracts text from a PDF file. If it's a scan, uses OpenAI Vision OCR."""
-    text = ""
+    """Извлекает текст из PDF. Использует гибридный подход: текст + Vision OCR для сканированных страниц."""
+    full_text = ""
     try:
         doc = fitz.open(pdf_path)
-        for page in doc:
-            text += page.get_text()
+        total_pages = len(doc)
         
-        # If very little text is extracted, it's likely a scan
-        if len(text.strip()) < 300 and len(doc) > 0:
-            print(f"PDF {pdf_path} seems to be a scan. Using OpenAI Vision OCR...")
-            return extract_text_via_openai_vision(doc)
+        scanned_page_indices = []
+        
+        for i in range(total_pages):
+            page = doc[i]
+            page_text = page.get_text().strip()
+            
+            if len(page_text) > 100:
+                full_text += f"\n--- СТРАНИЦА {i+1} (ТЕКСТ) ---\n{page_text}\n"
+            else:
+                scanned_page_indices.append(i)
+        
+        # Если найдены сканированные страницы, обрабатываем их через Vision
+        if scanned_page_indices:
+            print(f"PDF {pdf_path}: обнаружено {len(scanned_page_indices)} сканированных страниц.")
+            
+            # Умный выбор страниц для OCR (чтобы не сканировать всё подряд)
+            # Приоритет: первые 5, последние 5 и каждая 5-я в середине
+            to_ocr = set()
+            for idx in scanned_page_indices:
+                if idx < 5: to_ocr.add(idx) # Начало
+                elif idx >= total_pages - 5: to_ocr.add(idx) # Конец
+                elif idx % 5 == 0: to_ocr.add(idx) # Каждая 5-я для средних страниц
+            
+            # Ограничиваем общее число OCR-запросов (например, до 20 на документ)
+            final_ocr_list = sorted(list(to_ocr))[:20]
+            
+            if final_ocr_list:
+                print(f"Выполняется OCR для страниц: {[i+1 for i in final_ocr_list]}")
+                ocr_results = extract_text_via_openai_vision(doc, final_ocr_list)
+                full_text += ocr_results
             
         doc.close()
     except Exception as e:
-        print(f"Error extracting text from PDF {pdf_path}: {e}")
-        return f"Error: Could not extract text from PDF ({e})"
-    return text
+        print(f"Ошибка при обработке PDF {pdf_path}: {e}")
+        return f"Ошибка: Не удалось извлечь текст ({e})"
+    return full_text
 
-def extract_text_via_openai_vision(doc: fitz.Document) -> str:
-    """Converts key PDF pages to images and sends them to OpenAI for OCR."""
+def extract_text_via_openai_vision(doc: fitz.Document, pages_to_ocr: list) -> str:
+    """Отправляет выбранные страницы в OpenAI Vision для распознавания."""
     if not settings.OPENAI_API_KEY:
-        return "Error: OpenAI API Key not configured for OCR."
-
-    # Identify key pages: first 5 and last 5 (where most metadata resides)
-    total_pages = len(doc)
-    pages_to_ocr = list(range(min(5, total_pages)))
-    if total_pages > 5:
-        last_pages = list(range(max(5, total_pages - 5), total_pages))
-        pages_to_ocr.extend([p for p in last_pages if p not in pages_to_ocr])
+        return "\n[Ошибка: OpenAI API Key не настроен для OCR]\n"
 
     combined_ocr_text = ""
     
     for page_num in pages_to_ocr:
-        page = doc.load_page(page_num)
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2)) # Increase resolution for better OCR
-        img_data = pix.tobytes("png")
-        base64_image = base64.b64encode(img_data).decode('utf-8')
-
         try:
+            page = doc.load_page(page_num)
+            # Увеличиваем разрешение для улучшения качества OCR
+            pix = page.get_pixmap(matrix=fitz.Matrix(2.5, 2.5)) 
+            img_data = pix.tobytes("png")
+            base64_image = base64.b64encode(img_data).decode('utf-8')
+
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {settings.OPENAI_API_KEY}"
             }
+            
+            # Улучшенный промпт для юридических документов
+            prompt = (
+                "Это страница из юридического договора или акта. "
+                "Транскрибируй весь текст максимально точно. "
+                "ОБРАТИ ОСОБОЕ ВНИМАНИЕ на таблицы, списки адресов лифтов, ИНН организаций, "
+                "суммы (цифрами и прописью) и даты. "
+                "Выведи ТОЛЬКО распознанный текст без своих комментариев."
+            )
+
             payload = {
-                "model": "gpt-4o-mini", # Using mini for cost-effective OCR, upgrade to gpt-4o if needed
+                "model": "gpt-4o-mini",
                 "messages": [
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "This is a page from a contract. Please transcribe all the text you see on this page exactly as it is. Output ONLY the transcribed text."},
+                            {"type": "text", "text": prompt},
                             {
                                 "type": "image_url",
                                 "image_url": {"url": f"data:image/png;base64,{base64_image}"}
@@ -70,17 +101,18 @@ def extract_text_via_openai_vision(doc: fitz.Document) -> str:
                         ]
                     }
                 ],
-                "max_tokens": 2000
+                "max_tokens": 3000
             }
-            response = requests.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers, timeout=60)
+            
+            session = _get_session()
+            response = session.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers, timeout=120)
             response.raise_for_status()
             page_text = response.json()['choices'][0]['message']['content']
-            combined_ocr_text += f"\n--- PAGE {page_num + 1} (OCR) ---\n{page_text}\n"
+            combined_ocr_text += f"\n--- СТРАНИЦА {page_num + 1} (OCR) ---\n{page_text}\n"
         except Exception as e:
-            print(f"Error during OpenAI OCR for page {page_num}: {e}")
-            combined_ocr_text += f"\n[OCR Error on page {page_num + 1}]\n"
+            print(f"Ошибка OCR на странице {page_num}: {e}")
+            combined_ocr_text += f"\n[Ошибка OCR на странице {page_num + 1}]\n"
 
-    doc.close()
     return combined_ocr_text
 
 def extract_text_from_docx(docx_path: str) -> str:
